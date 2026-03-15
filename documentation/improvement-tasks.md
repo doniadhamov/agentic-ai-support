@@ -21,12 +21,12 @@ Deferred tasks (error handling, image sending, webhook hardening, Docker, observ
 
 | # | Task | File(s) | Status |
 |---|------|---------|--------|
-| 2.1 | Unit test: `format_reply()` — MarkdownV2 conversion, screenshot stripping, source links, 4096-char truncation, plain-text fallback | `tests/unit/test_formatter.py` | ⬜ |
-| 2.2 | Unit test: `ScoreThresholdFilter` — filter by score, source tagging | `tests/unit/test_reranker.py` | ⬜ |
-| 2.3 | Unit test: `build_query()` — query construction for en/ru/uz | `tests/unit/test_query_builder.py` | ⬜ |
-| 2.4 | Unit test: `ArticleProcessor` — HTML to content blocks, image extraction | `tests/unit/test_article_processor.py` | ⬜ |
-| 2.5 | Unit test: `MessageHandler` — full handler flow with mocked agent, reply sending, plain-text fallback | `tests/unit/test_message_handler.py` | ⬜ |
-| 2.6 | Unit test: `language.py` — detection, normalization, BCP-47 tags, fallback to English | `tests/unit/test_language.py` | ⬜ |
+| 2.1 | Unit test: `format_reply()` — MarkdownV2 conversion, screenshot stripping, source links, 4096-char truncation, plain-text fallback | `tests/unit/test_formatter.py` | ✅ |
+| 2.2 | Unit test: `ScoreThresholdFilter` — filter by score, source tagging | `tests/unit/test_reranker.py` | ✅ |
+| 2.3 | Unit test: `build_query()` — query construction for en/ru/uz | `tests/unit/test_query_builder.py` | ✅ |
+| 2.4 | Unit test: `ArticleProcessor` — HTML to content blocks, image extraction | `tests/unit/test_article_processor.py` | ✅ |
+| 2.5 | Unit test: `MessageHandler` — full handler flow with mocked agent, reply sending, plain-text fallback | `tests/unit/test_message_handler.py` | ✅ |
+| 2.6 | Unit test: `language.py` — detection, normalization, BCP-47 tags, fallback to English | `tests/unit/test_language.py` | ✅ |
 
 ---
 
