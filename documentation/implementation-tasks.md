@@ -37,16 +37,16 @@ Check off each task as it is completed.
 
 ---
 
-## Phase 3 — Embedding & Vector DB
+## Phase 3 — Embedding & Vector DB ✅
 
 | # | Task | File(s) | Status |
 |---|------|---------|--------|
-| 3.1 | `GeminiEmbedder`: `embed_text()` + `embed_multimodal()` | `src/embeddings/gemini_embedder.py` | ⬜ |
-| 3.2 | Async Qdrant wrapper: `upsert_points()`, `search()`, `delete_by_filter()` | `src/vector_db/qdrant_client.py` | ⬜ |
-| 3.3 | Collection constants + `create_collections_if_not_exist()` (768-dim, cosine) | `src/vector_db/collections.py` | ⬜ |
-| 3.4 | `ArticleIndexer.index_chunk()`: embed → UUID5 PointStruct → upsert | `src/vector_db/indexer.py` | ⬜ |
-| 3.5 | CLI: print Qdrant collection stats | `scripts/check_qdrant.py` | ⬜ |
-| 3.6 | Integration test: ingest 3 chunks, verify retrieval | `tests/integration/test_ingestion_pipeline.py` | ⬜ |
+| 3.1 | `GeminiEmbedder`: `embed_text()` + `embed_multimodal()` | `src/embeddings/gemini_embedder.py` | ✅ |
+| 3.2 | Async Qdrant wrapper: `upsert_points()`, `search()`, `delete_by_filter()` | `src/vector_db/qdrant_client.py` | ✅ |
+| 3.3 | Collection constants + `create_collections_if_not_exist()` (768-dim, cosine) | `src/vector_db/collections.py` | ✅ |
+| 3.4 | `ArticleIndexer.index_chunk()`: embed → UUID5 PointStruct → upsert | `src/vector_db/indexer.py` | ✅ |
+| 3.5 | CLI: print Qdrant collection stats | `scripts/check_qdrant.py` | ✅ |
+| 3.6 | Integration test: ingest 3 chunks, verify retrieval | `tests/integration/test_ingestion_pipeline.py` | ✅ |
 
 ---
 
