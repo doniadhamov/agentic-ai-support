@@ -52,6 +52,7 @@ Thumbs.db
 
 # Local image cache (downloaded from Zendesk)
 .image_cache/
+.cache/
 
 # Ticket store persistence
 ticket_store.json

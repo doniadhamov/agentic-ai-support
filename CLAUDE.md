@@ -11,8 +11,8 @@ and escalates unanswerable questions to human support via an external ticket API
 - **Python 3.12+** with `uv` package manager
 - **aiogram 3.x** — async Telegram bot framework
 - **Anthropic claude-sonnet-4-6** — classification, extraction, answer generation
-- **Google Gemini Embedding 2** (`text-embedding-004`) — multimodal embeddings (text + images)
-- **Qdrant** — vector store (`datatruck_docs` + `datatruck_memory` collections, 768-dim cosine)
+- **Google Gemini Embedding 2** (`gemini-embedding-2-preview`) — multimodal embeddings (text + images)
+- **Qdrant** — vector store (`datatruck_docs` + `datatruck_memory` collections, 3072-dim cosine)
 - **httpx** — async HTTP client (Zendesk API, ticket API)
 - **pydantic-settings** — typed config from `.env`
 - **loguru** — structured logging
@@ -125,6 +125,8 @@ Open Qdrant dashboard: `http://localhost:6333/dashboard`
 | `ZENDESK_SUBDOMAIN` | Zendesk subdomain (default: `support.datatruck.io`) |
 | `SUPPORT_API_BASE_URL` | External ticket API base URL |
 | `SUPPORT_API_KEY` | External ticket API key |
+| `GEMINI_EMBEDDING_MODEL` | Gemini embedding model (default: `models/gemini-embedding-2-preview`) |
+| `GEMINI_EMBEDDING_DIMENSIONS` | Embedding output dimensions (default: `3072`) |
 | `SUPPORT_MIN_CONFIDENCE_SCORE` | Min Qdrant score to accept chunk (default: `0.75`) |
 | `GROUP_CONTEXT_WINDOW` | Recent messages to keep per group (default: `20`) |
 | `TICKET_POLL_INTERVAL_SECONDS` | Ticket polling interval (default: `60`) |
@@ -165,8 +167,8 @@ incoming Telegram group message
 
 | Collection | Purpose | Vector size | Distance |
 |---|---|---|---|
-| `datatruck_docs` | Zendesk article chunks (text + optional image) | 768 | Cosine |
-| `datatruck_memory` | Approved resolved Q&A pairs | 768 | Cosine |
+| `datatruck_docs` | Zendesk article chunks (text + optional image) | 3072 | Cosine |
+| `datatruck_memory` | Approved resolved Q&A pairs | 3072 | Cosine |
 
 Point IDs use deterministic UUID5 from `(article_id, chunk_index)` — re-ingestion is idempotent.
 

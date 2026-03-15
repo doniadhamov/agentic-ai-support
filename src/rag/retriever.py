@@ -62,7 +62,7 @@ class RAGRetriever:
         query = build_query(question, language)
         logger.debug("Retrieving top-{} chunks for query '{}' (lang={})", k, query[:80], language)
 
-        vector = await self._embedder.embed_text(query)
+        vector = await self._embedder.embed_query(query)
 
         docs_results, memory_results = await asyncio.gather(
             self._qdrant.search(DOCS_COLLECTION, vector, top_k=k),

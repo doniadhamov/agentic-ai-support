@@ -19,16 +19,13 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from loguru import logger
 
-from src.ingestion.chunker import ArticleChunk
+from src.embeddings.gemini_embedder import GeminiEmbedder
+from src.ingestion.image_downloader import ImageDownloader
 from src.ingestion.sync_manager import SyncManager
 from src.utils.logging import setup_logging
-
-
-async def _index_chunks(chunks: list[ArticleChunk]) -> None:
-    """Placeholder: wire to ArticleIndexer in Phase 3."""
-    logger.info(
-        f"[indexer] Would index {len(chunks)} chunks for article {chunks[0].article_id}"
-    )
+from src.vector_db.collections import create_collections_if_not_exist
+from src.vector_db.indexer import ArticleIndexer
+from src.vector_db.qdrant_client import get_qdrant_client
 
 
 async def main(dry_run: bool) -> None:
@@ -36,10 +33,16 @@ async def main(dry_run: bool) -> None:
 
     if dry_run:
         logger.info("DRY-RUN mode — no chunks will be indexed")
-
-    on_chunks = None if dry_run else _index_chunks
-    manager = SyncManager(on_chunks=on_chunks)
-    stats = await manager.full_ingest(dry_run=dry_run)
+        manager = SyncManager(on_chunks=None)
+        stats = await manager.full_ingest(dry_run=dry_run)
+    else:
+        qdrant = get_qdrant_client()
+        await create_collections_if_not_exist(qdrant._client)
+        embedder = GeminiEmbedder()
+        async with ImageDownloader() as image_downloader:
+            indexer = ArticleIndexer(embedder, qdrant, image_downloader)
+            manager = SyncManager(on_chunks=indexer.index_chunks)
+            stats = await manager.full_ingest(dry_run=dry_run)
 
     logger.info(
         "Ingestion finished",

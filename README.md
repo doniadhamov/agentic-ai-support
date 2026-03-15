@@ -37,7 +37,7 @@ Telegram Group Message
 | `src/rag/` | Query builder, retriever (Qdrant), score-threshold reranker |
 | `src/ingestion/` | Zendesk API client, HTML processor, chunker, sync manager |
 | `src/vector_db/` | Qdrant async wrapper, collection setup, article indexer |
-| `src/embeddings/` | Gemini Embedding 2 (`text-embedding-004`) |
+| `src/embeddings/` | Gemini Embedding 2 (`gemini-embedding-2-preview`) |
 | `src/escalation/` | Ticket API client, ticket store, background poller |
 | `src/memory/` | Approved-answer store (resolved Q&A back into Qdrant) |
 | `src/telegram/` | aiogram bot, per-group context manager, message/webhook handlers |
@@ -112,7 +112,8 @@ webhook mode (the server listens on `:8080`).
 | `RAG_TOP_K` | | `5` | Number of chunks to retrieve |
 | `ZENDESK_SYNC_INTERVAL_HOURS` | | `6` | Auto-sync interval (0 = disabled) |
 | `ANTHROPIC_MODEL` | | `claude-sonnet-4-6` | Claude model ID |
-| `GEMINI_EMBEDDING_MODEL` | | `models/text-embedding-004` | Gemini embedding model |
+| `GEMINI_EMBEDDING_MODEL` | | `models/gemini-embedding-2-preview` | Gemini embedding model |
+| `GEMINI_EMBEDDING_DIMENSIONS` | | `3072` | Embedding output dimensionality |
 | `TELEGRAM_WEBHOOK_URL` | | `` | Webhook base URL (empty = long-polling) |
 | `LOG_LEVEL` | | `INFO` | Logging level |
 | `LOG_FILE` | | `logs/app.log` | Log file path |
@@ -170,8 +171,8 @@ uv run ruff format .
 
 | Collection | Purpose | Dimensions | Distance |
 |---|---|---|---|
-| `datatruck_docs` | Zendesk article chunks | 768 | Cosine |
-| `datatruck_memory` | Approved resolved Q&A pairs | 768 | Cosine |
+| `datatruck_docs` | Zendesk article chunks | 3072 | Cosine |
+| `datatruck_memory` | Approved resolved Q&A pairs | 3072 | Cosine |
 
 Point IDs are deterministic UUID5 derived from `(article_id, chunk_index)` so that
 re-ingestion is idempotent.

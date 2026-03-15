@@ -23,7 +23,8 @@ class Settings(BaseSettings):
 
     # --- Google Gemini ---
     google_api_key: str = Field(..., description="Google API key for Gemini embeddings")
-    gemini_embedding_model: str = Field(default="models/text-embedding-004")
+    gemini_embedding_model: str = Field(default="models/gemini-embedding-2-preview")
+    gemini_embedding_dimensions: int = Field(default=3072, description="Output dimensionality for embeddings")
 
     # --- Qdrant ---
     qdrant_url: str = Field(default="http://localhost:6333")

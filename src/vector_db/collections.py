@@ -9,7 +9,7 @@ from loguru import logger
 DOCS_COLLECTION = "datatruck_docs"
 MEMORY_COLLECTION = "datatruck_memory"
 
-VECTOR_SIZE = 768
+VECTOR_SIZE = 3072
 DISTANCE = Distance.COSINE
 
 _COLLECTIONS = (DOCS_COLLECTION, MEMORY_COLLECTION)
