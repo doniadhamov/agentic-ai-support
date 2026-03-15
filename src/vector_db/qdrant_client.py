@@ -6,7 +6,7 @@ from functools import lru_cache
 
 from loguru import logger
 from qdrant_client import AsyncQdrantClient
-from qdrant_client.models import Filter, PointStruct, ScoredPoint
+from qdrant_client.models import Filter, PointStruct, QueryResponse, ScoredPoint
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from src.config.settings import get_settings
@@ -81,14 +81,15 @@ class QdrantWrapper:
         Returns:
             Ordered list of :class:`ScoredPoint` (highest score first).
         """
-        results = await self._client.search(
+        response: QueryResponse = await self._client.query_points(
             collection_name=collection_name,
-            query_vector=query_vector,
+            query=query_vector,
             limit=top_k,
             score_threshold=score_threshold,
             query_filter=query_filter,
             with_payload=True,
         )
+        results = response.points
         logger.debug("Search in '{}' returned {} result(s)", collection_name, len(results))
         return results
 
