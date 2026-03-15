@@ -3,11 +3,8 @@ source links, 4096-char truncation, plain-text fallback."""
 
 from __future__ import annotations
 
-import pytest
-
 from src.agent.schemas import AgentOutput, KnowledgeSource, MessageCategory
-from src.telegram.formatter import format_reply, _MAX_LEN
-
+from src.telegram.formatter import _MAX_LEN, format_reply
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -196,3 +193,127 @@ def test_short_answer_not_truncated() -> None:
     result = format_reply(_output(answer="Short"))
     assert len(result) <= _MAX_LEN
     assert "…" not in result
+
+
+# ---------------------------------------------------------------------------
+# Phase 3 — Formatter edge cases
+# ---------------------------------------------------------------------------
+
+
+# --- 3.1 Nested Markdown formatting ----------------------------------------
+
+
+def test_triple_asterisk_bold_italic() -> None:
+    result = format_reply(_output(answer="***important***"))
+    # Must contain both bold (*) and italic (_) markers
+    assert "*" in result
+    assert "_" in result
+    assert "important" in result
+
+
+def test_triple_underscore_bold_italic() -> None:
+    result = format_reply(_output(answer="___crucial___"))
+    assert "*" in result
+    assert "_" in result
+    assert "crucial" in result
+
+
+def test_bold_wrapping_italic() -> None:
+    """**_text_** → bold + italic."""
+    result = format_reply(_output(answer="**_mixed_**"))
+    assert "*" in result
+    assert "_" in result
+    assert "mixed" in result
+
+
+def test_italic_wrapping_bold() -> None:
+    """_**text**_ → italic + bold."""
+    result = format_reply(_output(answer="_**nested**_"))
+    assert "*" in result
+    assert "_" in result
+    assert "nested" in result
+
+
+# --- 3.2 Code blocks with language identifiers ----------------------------
+
+
+def test_code_block_with_language() -> None:
+    result = format_reply(_output(answer="Example:\n```python\nprint('hi')\n```"))
+    assert "```python" in result
+    assert "print('hi')" in result
+
+
+def test_code_block_language_no_newline() -> None:
+    """Code block where lang identifier is followed by space, not newline."""
+    result = format_reply(_output(answer="Run:\n```bash echo hello```"))
+    assert "```bash" in result
+    assert "echo hello" in result
+
+
+def test_code_block_without_language() -> None:
+    """Code blocks without a language identifier should still work."""
+    result = format_reply(_output(answer="Use:\n```\ncommand\n```"))
+    assert "```" in result
+    assert "command" in result
+
+
+def test_code_block_content_not_escaped() -> None:
+    """Special chars inside code blocks should NOT be escaped."""
+    result = format_reply(_output(answer="```python\nx = 1 + 2\n```"))
+    # The + inside a code block should not be escaped
+    assert "1 + 2" in result
+
+
+# --- 3.3 Links with special characters in URLs ----------------------------
+
+
+def test_link_with_parentheses_in_url() -> None:
+    result = format_reply(_output(answer="See [wiki](https://en.wikipedia.org/wiki/Foo_(bar))"))
+    assert "wiki" in result
+    assert "wikipedia" in result
+    assert "Foo" in result
+
+
+def test_link_with_query_params() -> None:
+    result = format_reply(_output(answer="Check [results](https://example.com/search?q=test&page=1)"))
+    assert "results" in result
+    assert "example" in result
+
+
+def test_link_with_hash_fragment() -> None:
+    result = format_reply(_output(answer="Jump to [section](https://docs.io/page#heading-1)"))
+    assert "section" in result
+    assert "docs" in result
+
+
+# --- 3.4 Smart truncation -------------------------------------------------
+
+
+def test_truncation_at_sentence_boundary() -> None:
+    """Truncation should prefer cutting at sentence end rather than mid-word."""
+    # Build text with sentences that exceeds the limit
+    sentence = "This is a complete sentence. "
+    answer = sentence * 200  # way over 4096
+    result = format_reply(_output(answer=answer))
+    assert len(result) <= _MAX_LEN
+    assert result.endswith("…")
+    # The text before the ellipsis should end at a sentence boundary (period)
+    body = result[:-1].rstrip()
+    assert body.endswith(".") or body.endswith("\\.")
+
+
+def test_truncation_at_paragraph_boundary() -> None:
+    """Truncation should prefer paragraph breaks when available."""
+    para = "Short paragraph here.\n\n"
+    answer = para * 300  # way over 4096
+    result = format_reply(_output(answer=answer))
+    assert len(result) <= _MAX_LEN
+    assert result.endswith("…")
+
+
+def test_truncation_no_good_boundary_falls_back() -> None:
+    """When there's no sentence/paragraph/word boundary, still truncate."""
+    answer = "A" * 5000  # no spaces, no punctuation
+    result = format_reply(_output(answer=answer))
+    assert len(result) <= _MAX_LEN
+    assert result.endswith("…")

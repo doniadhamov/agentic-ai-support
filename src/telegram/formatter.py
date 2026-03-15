@@ -37,7 +37,7 @@ def format_reply(output: AgentOutput) -> str:
     text = _markdown_to_telegram(text)
 
     if len(text) > _MAX_LEN:
-        text = text[: _MAX_LEN - 1] + "…"
+        text = _smart_truncate(text, _MAX_LEN)
 
     return text
 
@@ -57,8 +57,12 @@ def _markdown_to_telegram(text: str) -> str:
     def _stash_code_block(m: re.Match) -> str:
         lang = m.group(1) or ""
         code = m.group(2)
+        # Normalize: ensure newline between language identifier and code
+        if code and not code.startswith("\n"):
+            code = code.lstrip()
+            code = "\n" + code
         idx = len(code_blocks)
-        code_blocks.append(f"```{lang}\n{code}```")
+        code_blocks.append(f"```{lang}{code}```")
         return f"\uf000CB{idx}\uf000"
 
     def _stash_inline_code(m: re.Match) -> str:
@@ -70,11 +74,16 @@ def _markdown_to_telegram(text: str) -> str:
     def _stash_link(m: re.Match) -> str:
         link_text = _escape_mdv2(m.group(1))
         url = m.group(2)
+        # Escape special MarkdownV2 characters in the URL (parentheses are
+        # allowed inside Telegram's link syntax but ) and \ must be escaped)
+        url = url.replace("\\", "\\\\").replace(")", "\\)")
         idx = len(links)
         links.append(f"[{link_text}]({url})")
         return f"\uf000LN{idx}\uf000"
 
     text = re.sub(r"```(\w*)\n(.*?)```", _stash_code_block, text, flags=re.DOTALL)
+    # Also handle code blocks where lang identifier has no newline (e.g. ```python code```)
+    text = re.sub(r"```(\w+)([ \t]+.*?)```", _stash_code_block, text, flags=re.DOTALL)
     text = re.sub(r"`([^`]+)`", _stash_inline_code, text)
 
     # 2. Headings → bold
@@ -88,10 +97,27 @@ def _markdown_to_telegram(text: str) -> str:
             processed.append(line)
     text = "\n".join(processed)
 
-    # 3. Bold-italic ***text***
+    # 3. Bold-italic ***text*** or ___text___
     text = re.sub(
         r"\*{3}(.+?)\*{3}",
         lambda m: f"{_PH['B1']}{_PH['I1']}{m.group(1)}{_PH['I2']}{_PH['B2']}",
+        text,
+    )
+    text = re.sub(
+        r"___(.+?)___",
+        lambda m: f"{_PH['B1']}{_PH['I1']}{m.group(1)}{_PH['I2']}{_PH['B2']}",
+        text,
+    )
+
+    # 3b. Mixed nesting: **_text_** and _**text**_
+    text = re.sub(
+        r"\*{2}_(.+?)_\*{2}",
+        lambda m: f"{_PH['B1']}{_PH['I1']}{m.group(1)}{_PH['I2']}{_PH['B2']}",
+        text,
+    )
+    text = re.sub(
+        r"_\*{2}(.+?)\*{2}_",
+        lambda m: f"{_PH['I1']}{_PH['B1']}{m.group(1)}{_PH['B2']}{_PH['I2']}",
         text,
     )
 
@@ -123,8 +149,12 @@ def _markdown_to_telegram(text: str) -> str:
         text,
     )
 
-    # 8. Links [text](url)
-    text = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", _stash_link, text)
+    # 8. Links [text](url) — supports balanced parentheses and special chars in URLs
+    text = re.sub(
+        r"\[([^\]]+)\]\(((?:[^()]*|\([^()]*\))*)\)",
+        _stash_link,
+        text,
+    )
 
     # 9. Escape all remaining special characters
     text = _escape_mdv2(text)
@@ -152,6 +182,50 @@ def _escape_mdv2(text: str) -> str:
             result.append("\\")
         result.append(ch)
     return "".join(result)
+
+
+# ---------------------------------------------------------------------------
+# Smart truncation
+# ---------------------------------------------------------------------------
+
+# Minimum portion of the limit to keep when searching for a break point.
+# If no sentence/paragraph break is found within the last 20%, hard-cut.
+_TRUNCATION_SEARCH_RATIO = 0.8
+
+
+def _smart_truncate(text: str, limit: int) -> str:
+    """Truncate *text* at a sentence or paragraph boundary when possible.
+
+    Tries, in order:
+    1. Last paragraph break (``\\n\\n``) before *limit*.
+    2. Last sentence-ending punctuation (``. ! ?``) followed by a space or newline.
+    3. Last whitespace boundary (avoid splitting a word).
+    4. Hard cut as a last resort.
+    """
+    # Reserve 1 char for the ellipsis
+    max_content = limit - 1
+    search_floor = int(max_content * _TRUNCATION_SEARCH_RATIO)
+
+    window = text[:max_content]
+
+    # 1. Paragraph break
+    pos = window.rfind("\n\n", search_floor)
+    if pos != -1:
+        return text[:pos].rstrip() + "…"
+
+    # 2. Sentence end (. ! ?) followed by space/newline/end-of-window
+    sentence_matches = list(re.finditer(r"[.!?](?=\s|$)", window[search_floor:]))
+    if sentence_matches:
+        cut = search_floor + sentence_matches[-1].end()
+        return text[:cut].rstrip() + "…"
+
+    # 3. Word boundary
+    pos = window.rfind(" ", search_floor)
+    if pos != -1:
+        return text[:pos].rstrip() + "…"
+
+    # 4. Hard cut
+    return text[:max_content] + "…"
 
 
 # ---------------------------------------------------------------------------

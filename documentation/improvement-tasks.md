@@ -34,10 +34,10 @@ Deferred tasks (error handling, image sending, webhook hardening, Docker, observ
 
 | # | Task | File(s) | Status |
 |---|------|---------|--------|
-| 3.1 | Handle nested Markdown formatting (`***bold+italic***`) | `src/telegram/formatter.py` | ⬜ |
-| 3.2 | Handle code blocks with language identifiers (` ```python `) | `src/telegram/formatter.py` | ⬜ |
-| 3.3 | Handle links with special characters in URLs | `src/telegram/formatter.py` | ⬜ |
-| 3.4 | Improve truncation — cut at sentence/paragraph boundary instead of mid-word | `src/telegram/formatter.py` | ⬜ |
+| 3.1 | Handle nested Markdown formatting (`***bold+italic***`) | `src/telegram/formatter.py` | ✅ |
+| 3.2 | Handle code blocks with language identifiers (` ```python `) | `src/telegram/formatter.py` | ✅ |
+| 3.3 | Handle links with special characters in URLs | `src/telegram/formatter.py` | ✅ |
+| 3.4 | Improve truncation — cut at sentence/paragraph boundary instead of mid-word | `src/telegram/formatter.py` | ✅ |
 
 ---
 
