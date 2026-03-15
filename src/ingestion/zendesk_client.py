@@ -24,7 +24,7 @@ class ZendeskClient:
         self._client: httpx.AsyncClient | None = None
 
     async def __aenter__(self) -> "ZendeskClient":
-        self._client = httpx.AsyncClient(auth=self._auth, timeout=30.0)
+        self._client = httpx.AsyncClient(auth=self._auth, timeout=30.0, follow_redirects=True)
         return self
 
     async def __aexit__(self, *_: Any) -> None:
