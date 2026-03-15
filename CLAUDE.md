@@ -24,7 +24,7 @@ and escalates unanswerable questions to human support via an external ticket API
 ```
 src/
   config/         — settings.py (all env vars as pydantic BaseSettings, get_settings())
-  telegram/       — bot.py, handlers/, context/ (per-group sliding window + asyncio Lock)
+  telegram/       — bot.py, handlers/, formatter.py, context/ (per-group sliding window + asyncio Lock)
   agent/          — agent.py (orchestrator), classifier, extractor, generator, prompts/, schemas.py
   rag/            — retriever.py, reranker.py, query_builder.py
   ingestion/      — zendesk_client.py, article_processor.py, image_downloader.py, chunker.py, sync_manager.py
@@ -152,7 +152,11 @@ incoming Telegram group message
   → reranker.py    →  filter below SUPPORT_MIN_CONFIDENCE_SCORE
   → generator.py   →  grounded answer OR escalation decision
   → if escalated: ticket_client.create_ticket() + notify user
-  → if resolved:  format_reply() + bot.send_message(reply_to=original_message_id)
+  → if resolved:  format_reply() → MarkdownV2 conversion + bot.send_message(reply_to=original_message_id)
+     - answer returned verbatim from documentation (not rephrased)
+     - screenshot references stripped (image support planned)
+     - "For more information: <article_url>" appended from chunk metadata
+     - MarkdownV2 formatting with plain-text fallback on parse errors
 
 human support answers escalated ticket
   → TicketPoller detects answered ticket
@@ -166,7 +170,9 @@ human support answers escalated ticket
 - All Claude calls use the **tool-use pattern** with a single `produce_output` tool whose
   JSON schema matches the output Pydantic model — ensures strict structured output
 - Classifier/extractor: `temperature=0.0`
-- Generator: `temperature=0.2`
+- Generator: `temperature=0.2`, `max_tokens=4096`
+- Generator returns documentation content verbatim — prompts instruct no rephrasing/summarizing
+- Knowledge sources (titles + URLs) are built from retrieved chunks, not from Claude output
 - Model: `claude-sonnet-4-6` (configurable via `ANTHROPIC_MODEL`)
 
 ## Qdrant Collections
@@ -177,6 +183,17 @@ human support answers escalated ticket
 | `datatruck_memory` | Approved resolved Q&A pairs | 3072 | Cosine |
 
 Point IDs use deterministic UUID5 from `(article_id, chunk_index)` — re-ingestion is idempotent.
+
+## Telegram Formatting
+
+- Bot uses `ParseMode.MARKDOWN_V2` (set globally in `bot.py`)
+- `formatter.py` converts standard Markdown (from Claude output) → Telegram MarkdownV2:
+  - `## Heading` → `*Heading*` (bold), `**bold**` → `*bold*`, `*italic*` → `_italic_`
+  - Code blocks, inline code, links, strikethrough preserved
+  - All MarkdownV2 special characters escaped
+- `screenshot(url)` references are stripped (image sending planned for future)
+- Reply includes `For more information: <article_url>` when source is documentation
+- Error handling: formatting errors fall back to raw text; Telegram parse errors retry as plain text
 
 ## Testing
 

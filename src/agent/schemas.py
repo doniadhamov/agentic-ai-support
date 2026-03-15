@@ -18,6 +18,7 @@ class KnowledgeSource(BaseModel):
     type: str = Field(..., description="'documentation' or 'approved_memory'")
     title: str = Field(default="")
     id: str = Field(default="")
+    url: str = Field(default="", description="Source article URL")
 
 
 class AgentInput(BaseModel):

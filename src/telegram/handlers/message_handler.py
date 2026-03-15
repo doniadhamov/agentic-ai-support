@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from aiogram import F, Router
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import Message
 from loguru import logger
 
@@ -74,9 +75,25 @@ async def handle_group_message(
         logger.bind(**log_ctx).debug("category={} — no reply", output.category.value)
         return
 
-    reply_text = format_reply(output)
+    # --- Format the reply text (MarkdownV2 conversion) ----------------------
+    raw_text = output.answer or output.follow_up_question or ""
+    try:
+        reply_text = format_reply(output)
+    except Exception as exc:  # noqa: BLE001
+        logger.bind(**log_ctx).error("Failed to format reply, falling back to raw text: {}", exc)
+        reply_text = raw_text
 
-    await message.reply(reply_text)
+    # --- Send the reply, with fallback to plain text -----------------------
+    try:
+        await message.reply(reply_text)
+    except TelegramBadRequest as exc:
+        if "can't parse entities" in str(exc):
+            logger.bind(**log_ctx).warning(
+                "MarkdownV2 parse failed, retrying as plain text: {}", exc
+            )
+            await message.reply(raw_text, parse_mode=None)
+        else:
+            raise
 
     logger.bind(**log_ctx).info(
         "Replied category={} language={} escalated={}",

@@ -68,11 +68,33 @@ def _format_chunks(chunks: list[RetrievedChunk]) -> str:
     for i, chunk in enumerate(chunks, start=1):
         source_label = "documentation" if chunk.source == "docs" else "approved memory"
         title = chunk.article_title or "Untitled"
-        parts.append(
-            f"[{i}] Source: {source_label} | Title: {title} | Score: {chunk.score:.3f}\n"
-            f"{chunk.text.strip()}"
-        )
+        header = f"[{i}] Source: {source_label} | Title: {title} | Score: {chunk.score:.3f}"
+        if chunk.article_url:
+            header += f" | URL: {chunk.article_url}"
+        if chunk.image_url:
+            header += f"\nscreenshot({chunk.image_url})"
+        parts.append(f"{header}\n{chunk.text.strip()}")
     return "\n\n".join(parts)
+
+
+def _build_sources_from_chunks(chunks: list[RetrievedChunk]) -> list[KnowledgeSource]:
+    """Deduplicate chunks into a list of KnowledgeSources with URLs."""
+    seen: set[str] = set()
+    sources: list[KnowledgeSource] = []
+    for chunk in chunks:
+        key = chunk.article_url or chunk.article_title or chunk.point_id
+        if key in seen:
+            continue
+        seen.add(key)
+        sources.append(
+            KnowledgeSource(
+                type="documentation" if chunk.source == "docs" else "approved_memory",
+                title=chunk.article_title,
+                url=chunk.article_url,
+                id=chunk.point_id,
+            )
+        )
+    return sources
 
 
 class AnswerGenerator:
@@ -115,7 +137,7 @@ class AnswerGenerator:
 
         response = await self._client.messages.create(
             model=self._model,
-            max_tokens=1024,
+            max_tokens=4096,
             temperature=0.2,
             system=SYSTEM_PROMPT,
             messages=[{"role": "user", "content": user_content}],
@@ -125,15 +147,9 @@ class AnswerGenerator:
 
         tool_input = _extract_tool_input(response)
 
-        raw_sources: list[dict] = tool_input.get("knowledge_sources_used", [])
-        sources = [
-            KnowledgeSource(
-                type=s.get("type", "documentation"),
-                title=s.get("title", ""),
-                id=s.get("id", ""),
-            )
-            for s in raw_sources
-        ]
+        # Build sources from the actual chunks (not Claude's output) to ensure
+        # we always have accurate URLs and titles.
+        sources = _build_sources_from_chunks(chunks)
 
         result = GeneratorResult(
             answer=tool_input.get("answer", ""),

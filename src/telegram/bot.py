@@ -38,7 +38,7 @@ def create_bot() -> tuple[Bot, Dispatcher]:
 
     bot = Bot(
         token=settings.telegram_bot_token,
-        default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN),
+        default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN_V2),
     )
 
     dp = Dispatcher()

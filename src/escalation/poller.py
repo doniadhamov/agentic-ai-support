@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 
 from aiogram import Bot
+from aiogram.exceptions import TelegramBadRequest
 from loguru import logger
 
 from src.config.settings import get_settings
@@ -116,13 +117,32 @@ class TicketPoller:
                 text=answer,
                 reply_to_message_id=message_id,
             )
-            logger.info(
-                "TicketPoller: delivered answer for ticket_id={} group_id={} message_id={}",
-                ticket_id,
-                group_id,
-                message_id,
-            )
+        except TelegramBadRequest as exc:
+            if "can't parse entities" in str(exc):
+                logger.warning(
+                    "TicketPoller: Markdown parse failed for ticket_id={}, retrying plain text",
+                    ticket_id,
+                )
+                await self._bot.send_message(
+                    chat_id=group_id,
+                    text=answer,
+                    reply_to_message_id=message_id,
+                    parse_mode=None,
+                )
+            else:
+                logger.error(
+                    "TicketPoller: failed to deliver answer for ticket_id={} — {}", ticket_id, exc
+                )
+                return
         except Exception as exc:  # noqa: BLE001
             logger.error(
                 "TicketPoller: failed to deliver answer for ticket_id={} — {}", ticket_id, exc
             )
+            return
+
+        logger.info(
+            "TicketPoller: delivered answer for ticket_id={} group_id={} message_id={}",
+            ticket_id,
+            group_id,
+            message_id,
+        )
