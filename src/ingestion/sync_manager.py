@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from loguru import logger
@@ -31,7 +31,7 @@ class SyncManager:
 
     def __init__(
         self,
-        on_chunks: "SyncManager.ChunkCallback | None" = None,
+        on_chunks: SyncManager.ChunkCallback | None = None,
         chunk_size: int = 1_000,
         chunk_overlap: int = 200,
     ) -> None:
@@ -98,7 +98,7 @@ class SyncManager:
         if since is None:
             from datetime import timedelta
 
-            since = datetime.now(tz=timezone.utc) - timedelta(hours=24)
+            since = datetime.now(tz=UTC) - timedelta(hours=24)
 
         updated_since = since.strftime("%Y-%m-%dT%H:%M:%SZ")
         logger.info("Starting delta Zendesk sync", since=updated_since, dry_run=dry_run)
@@ -150,7 +150,7 @@ class SyncManager:
             try:
                 updated_at = datetime.fromisoformat(updated_at_raw.replace("Z", "+00:00"))
             except (ValueError, AttributeError):
-                updated_at = datetime.now(tz=timezone.utc)
+                updated_at = datetime.now(tz=UTC)
 
             language = normalize_language(article.get("locale", "en"))
 

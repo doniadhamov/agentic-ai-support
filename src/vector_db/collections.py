@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+from loguru import logger
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.models import Distance, VectorParams
-from loguru import logger
 
 DOCS_COLLECTION = "datatruck_docs"
 MEMORY_COLLECTION = "datatruck_memory"

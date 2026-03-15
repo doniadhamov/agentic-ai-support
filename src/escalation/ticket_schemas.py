@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from enum import Enum
+from datetime import UTC, datetime
+from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
 
-class TicketStatus(str, Enum):
+class TicketStatus(StrEnum):
     OPEN = "open"
     ANSWERED = "answered"
     CLOSED = "closed"
@@ -39,7 +39,7 @@ class TicketRecord(BaseModel):
     status: TicketStatus = Field(default=TicketStatus.OPEN)
     answer: str = Field(default="", description="Human answer; populated when status=answered")
     created_at: datetime = Field(
-        default_factory=lambda: datetime.now(tz=timezone.utc)
+        default_factory=lambda: datetime.now(tz=UTC)
     )
 
 

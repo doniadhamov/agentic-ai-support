@@ -111,11 +111,11 @@ async def _run_zendesk_sync(interval_hours: int) -> None:
     Sleeps for *interval_hours* before the first run so the bot is fully
     initialised, then re-syncs on every subsequent interval.
     """
+    from src.embeddings.gemini_embedder import GeminiEmbedder
+    from src.ingestion.chunker import ArticleChunk
     from src.ingestion.sync_manager import SyncManager
     from src.vector_db.indexer import ArticleIndexer
-    from src.embeddings.gemini_embedder import GeminiEmbedder
     from src.vector_db.qdrant_client import get_qdrant_client
-    from src.ingestion.chunker import ArticleChunk
 
     interval_seconds = interval_hours * 3600
 
@@ -155,8 +155,8 @@ async def _run_webhook(bot: Bot, dp: Dispatcher, webhook_url: str) -> None:
     The ticket-callback aiohttp app is mounted on the same server if
     ``ticket_callback_mode = webhook``.
     """
-    from aiohttp import web
     from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
+    from aiohttp import web
 
     settings = get_settings()
     telegram_webhook_path = "/webhook"
@@ -167,7 +167,7 @@ async def _run_webhook(bot: Bot, dp: Dispatcher, webhook_url: str) -> None:
     app = web.Application()
 
     if settings.ticket_callback_mode == "webhook":
-        from src.telegram.handlers.webhook_handler import build_webhook_app, WEBHOOK_PATH
+        from src.telegram.handlers.webhook_handler import WEBHOOK_PATH, build_webhook_app
 
         ticket_app = build_webhook_app(bot)
         app.add_subapp("/tickets", ticket_app)

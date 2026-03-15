@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
 
-class MessageCategory(str, Enum):
+class MessageCategory(StrEnum):
     NON_SUPPORT = "NON_SUPPORT"
     SUPPORT_QUESTION = "SUPPORT_QUESTION"
     CLARIFICATION_NEEDED = "CLARIFICATION_NEEDED"

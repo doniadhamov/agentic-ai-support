@@ -6,7 +6,8 @@ Anthropic and Gemini API calls are mocked — no real API keys needed.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+import contextlib
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -18,10 +19,6 @@ from src.agent.extractor import QuestionExtractor
 from src.agent.generator import AnswerGenerator
 from src.agent.schemas import (
     AgentInput,
-    ClassifierResult,
-    ExtractorResult,
-    GeneratorResult,
-    KnowledgeSource,
     MessageCategory,
 )
 from src.ingestion.chunker import ArticleChunk
@@ -38,7 +35,7 @@ from src.vector_db.qdrant_client import QdrantWrapper
 QDRANT_URL = "http://localhost:6333"
 VECTOR_SIZE = 768
 
-_NOW = datetime(2024, 6, 1, tzinfo=timezone.utc)
+_NOW = datetime(2024, 6, 1, tzinfo=UTC)
 _QUESTION_VEC = [1.0 if j == 0 else 0.0 for j in range(VECTOR_SIZE)]
 
 _CHUNK = ArticleChunk(
@@ -61,13 +58,11 @@ async def qdrant_client() -> AsyncQdrantClient:  # type: ignore[misc]
     client = AsyncQdrantClient(url=QDRANT_URL)
     yield client
     # Cleanup seeded point after each test
-    try:
+    with contextlib.suppress(Exception):
         await client.delete(
             collection_name=DOCS_COLLECTION,
             points_selector=[_chunk_point_id(_CHUNK.article_id, _CHUNK.chunk_index)],
         )
-    except Exception:
-        pass
     await client.close()
 
 

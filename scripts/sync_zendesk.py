@@ -14,7 +14,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 # Allow running from the repo root without installing the package.
@@ -46,7 +46,7 @@ async def _index_chunks(chunks: list[ArticleChunk]) -> None:
 async def main(hours: int, dry_run: bool) -> None:
     setup_logging()
 
-    since = datetime.now(tz=timezone.utc) - timedelta(hours=hours)
+    since = datetime.now(tz=UTC) - timedelta(hours=hours)
 
     if dry_run:
         logger.info("DRY-RUN mode — no chunks will be indexed")

@@ -23,7 +23,7 @@ class ZendeskClient:
         )
         self._client: httpx.AsyncClient | None = None
 
-    async def __aenter__(self) -> "ZendeskClient":
+    async def __aenter__(self) -> ZendeskClient:
         self._client = httpx.AsyncClient(auth=self._auth, timeout=30.0, follow_redirects=True)
         return self
 
@@ -47,7 +47,7 @@ class ZendeskClient:
         while url:
             data = await self._get(url)
             # Zendesk wraps results in a key named after the resource
-            for key, value in data.items():
+            for _key, value in data.items():
                 if isinstance(value, list):
                     results.extend(value)
                     break

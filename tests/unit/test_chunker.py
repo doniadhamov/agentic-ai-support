@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -13,7 +13,7 @@ from src.ingestion.chunker import ArticleChunk, chunk_article
 # Helpers
 # ---------------------------------------------------------------------------
 
-NOW = datetime(2024, 1, 1, tzinfo=timezone.utc)
+NOW = datetime(2024, 1, 1, tzinfo=UTC)
 BASE_KWARGS = dict(
     article_id=42,
     article_title="Test Article",

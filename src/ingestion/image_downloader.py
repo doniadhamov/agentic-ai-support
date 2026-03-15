@@ -26,7 +26,7 @@ class ImageDownloader:
         self._cache_dir.mkdir(parents=True, exist_ok=True)
         self._client: httpx.AsyncClient | None = None
 
-    async def __aenter__(self) -> "ImageDownloader":
+    async def __aenter__(self) -> ImageDownloader:
         self._client = httpx.AsyncClient(timeout=30.0, follow_redirects=True)
         return self
 

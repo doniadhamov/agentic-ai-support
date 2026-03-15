@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from src.memory.approved_memory import ApprovedMemory, _memory_point_id
 from src.memory.memory_schemas import ApprovedAnswer
 from src.vector_db.collections import MEMORY_COLLECTION
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

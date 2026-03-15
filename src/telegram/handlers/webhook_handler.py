@@ -68,7 +68,7 @@ async def ticket_callback_handler(request: web.Request) -> web.Response:
     return web.Response(status=200, text="OK")
 
 
-def build_webhook_app(bot: "Bot") -> web.Application:
+def build_webhook_app(bot: Bot) -> web.Application:
     """Create a minimal aiohttp application with the ticket-callback route.
 
     Args:

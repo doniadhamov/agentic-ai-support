@@ -10,18 +10,16 @@ the Telegram bot. It tests the full escalation loop:
 
 from __future__ import annotations
 
-import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
+import httpx
 import pytest
 import respx
-import httpx
 
+from src.escalation.poller import TicketPoller
 from src.escalation.ticket_client import TicketAPIClient
 from src.escalation.ticket_schemas import TicketCreate, TicketRecord, TicketResponse, TicketStatus
 from src.escalation.ticket_store import TicketStore
-from src.escalation.poller import TicketPoller
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

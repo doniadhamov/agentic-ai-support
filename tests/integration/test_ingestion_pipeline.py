@@ -5,13 +5,13 @@ Requires a local Qdrant instance (docker compose up -d).
 
 from __future__ import annotations
 
+import contextlib
 import uuid
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock
+from datetime import UTC, datetime
+from unittest.mock import MagicMock
 
 import pytest
 from qdrant_client import AsyncQdrantClient
-from qdrant_client.models import PointStruct
 
 from src.ingestion.chunker import ArticleChunk
 from src.vector_db.collections import DOCS_COLLECTION, create_collections_if_not_exist
@@ -25,7 +25,7 @@ from src.vector_db.qdrant_client import QdrantWrapper
 QDRANT_URL = "http://localhost:6333"
 VECTOR_SIZE = 768
 
-_NOW = datetime(2024, 1, 1, tzinfo=timezone.utc)
+_NOW = datetime(2024, 1, 1, tzinfo=UTC)
 
 CHUNKS: list[ArticleChunk] = [
     ArticleChunk(
@@ -78,13 +78,11 @@ async def qdrant_client() -> AsyncQdrantClient:  # type: ignore[misc]
     # Cleanup: remove test points inserted during the test
     for chunk in CHUNKS:
         point_id = _chunk_point_id(chunk.article_id, chunk.chunk_index)
-        try:
+        with contextlib.suppress(Exception):
             await client.delete(
                 collection_name=DOCS_COLLECTION,
                 points_selector=[point_id],
             )
-        except Exception:
-            pass
     await client.close()
 
 

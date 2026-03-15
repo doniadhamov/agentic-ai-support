@@ -70,9 +70,10 @@ def chunk_article(
     for block in content_blocks:
         if block.is_text:
             assert block.text is not None
-            if pending_image and not pending_text:
-                # Image appeared before any text; attach to empty text segment
-                segments.append(("", pending_image))
+            if pending_image:
+                # Flush accumulated text with the pending image before starting new text
+                segments.append((pending_text, pending_image))
+                pending_text = ""
                 pending_image = None
             pending_text += (" " if pending_text else "") + block.text
         elif block.is_image:
@@ -87,58 +88,57 @@ def chunk_article(
     if pending_text or pending_image:
         segments.append((pending_text, pending_image))
 
-    # Join all text for sliding-window chunking
-    full_text = " ".join(seg[0] for seg in segments if seg[0]).strip()
-
-    if not full_text:
-        return []
-
-    # Build a mapping: character position → image_url
-    # We pin each image to the character offset where its text segment starts.
-    image_map: dict[int, str] = {}
-    offset = 0
+    # Merge consecutive segments that share the same image (or lack of image)
+    # and attach orphaned images (no text) to the following text segment.
+    merged: list[tuple[str, str | None]] = []
+    orphan_image: str | None = None
     for seg_text, seg_image in segments:
-        if seg_image and seg_text:
-            image_map[offset] = seg_image
-        elif seg_image:
-            image_map[0] = seg_image  # no text; assign to start
-        if seg_text:
-            offset += len(seg_text) + 1  # +1 for the joining space
+        if seg_image and not seg_text:
+            # Image with no text — carry forward to the next text segment
+            orphan_image = seg_image
+            continue
+        # Attach any orphaned image to this segment if it has no image of its own
+        if orphan_image and not seg_image:
+            seg_image = orphan_image
+        orphan_image = None
+        if merged and merged[-1][1] == seg_image:
+            prev_text, prev_image = merged[-1]
+            joined = (prev_text + " " + seg_text).strip() if prev_text and seg_text else (prev_text or seg_text)
+            merged[-1] = (joined, prev_image)
+        else:
+            merged.append((seg_text, seg_image))
 
-    # Slide the window over full_text
+    # Chunk each segment independently, preserving its image association.
     chunks: list[ArticleChunk] = []
     step = chunk_size - chunk_overlap
-    start = 0
+    common = dict(
+        article_id=article_id,
+        article_title=article_title,
+        article_url=article_url,
+        section_id=section_id,
+        category_id=category_id,
+        language=language,
+        updated_at=updated_at,
+    )
 
-    while start < len(full_text):
-        end = min(start + chunk_size, len(full_text))
-        chunk_text = full_text[start:end].strip()
-
-        if chunk_text:
-            # Find the image (if any) whose offset falls within this chunk window
-            image_url: str | None = None
-            for img_offset, img_url in sorted(image_map.items()):
-                if start <= img_offset < end:
-                    image_url = img_url
-                    break
-
-            chunks.append(
-                ArticleChunk(
-                    article_id=article_id,
-                    chunk_index=len(chunks),
-                    text=chunk_text,
-                    image_url=image_url,
-                    article_title=article_title,
-                    article_url=article_url,
-                    section_id=section_id,
-                    category_id=category_id,
-                    language=language,
-                    updated_at=updated_at,
+    for seg_text, seg_image in merged:
+        if not seg_text:
+            continue
+        start = 0
+        while start < len(seg_text):
+            end = min(start + chunk_size, len(seg_text))
+            chunk_text = seg_text[start:end].strip()
+            if chunk_text:
+                chunks.append(
+                    ArticleChunk(
+                        chunk_index=len(chunks),
+                        text=chunk_text,
+                        image_url=seg_image if start == 0 else None,
+                        **common,
+                    )
                 )
-            )
-
-        if end == len(full_text):
-            break
-        start += step
+            if end == len(seg_text):
+                break
+            start += step
 
     return chunks

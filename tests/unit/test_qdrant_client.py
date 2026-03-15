@@ -9,7 +9,6 @@ from qdrant_client.models import Filter, PointStruct, ScoredPoint
 
 from src.vector_db.qdrant_client import QdrantWrapper
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------

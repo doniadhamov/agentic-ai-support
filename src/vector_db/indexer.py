@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from datetime import timezone
+from datetime import UTC
 
 from loguru import logger
 from qdrant_client.models import PointStruct
@@ -38,7 +38,7 @@ def _build_payload(chunk: ArticleChunk) -> dict:
         "section_id": chunk.section_id,
         "category_id": chunk.category_id,
         "language": chunk.language,
-        "updated_at": chunk.updated_at.astimezone(timezone.utc).isoformat(),
+        "updated_at": chunk.updated_at.astimezone(UTC).isoformat(),
     }
 
 

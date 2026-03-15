@@ -9,11 +9,11 @@ Deferred tasks (error handling, image sending, webhook hardening, Docker, observ
 
 | # | Task | File(s) | Status |
 |---|------|---------|--------|
-| 1.1 | Fix 30 auto-fixable ruff lint errors (`ruff check --fix .`) | (multiple) | ⬜ |
-| 1.2 | Fix 6 remaining manual ruff lint errors (unsorted imports, unused vars) | `src/telegram/bot.py`, `src/ingestion/zendesk_client.py`, `tests/unit/test_approved_memory.py`, `tests/unit/test_agent.py`, `tests/unit/test_qdrant_client.py` | ⬜ |
-| 1.3 | Fix `test_multiple_images_in_article` — chunker loses first image when article has multiple images across sections | `src/ingestion/chunker.py` | ⬜ |
-| 1.4 | Migrate `MessageCategory(str, Enum)` → `StrEnum` | `src/agent/schemas.py` | ⬜ |
-| 1.5 | Migrate `TicketStatus(str, Enum)` → `StrEnum` | `src/escalation/ticket_schemas.py` | ⬜ |
+| 1.1 | Fix 30 auto-fixable ruff lint errors (`ruff check --fix .`) | (multiple) | ✅ |
+| 1.2 | Fix 6 remaining manual ruff lint errors (unsorted imports, unused vars) | `src/telegram/bot.py`, `src/ingestion/zendesk_client.py`, `tests/unit/test_approved_memory.py`, `tests/unit/test_agent.py`, `tests/unit/test_qdrant_client.py` | ✅ |
+| 1.3 | Fix `test_multiple_images_in_article` — chunker loses first image when article has multiple images across sections | `src/ingestion/chunker.py` | ✅ |
+| 1.4 | Migrate `MessageCategory(str, Enum)` → `StrEnum` | `src/agent/schemas.py` | ✅ |
+| 1.5 | Migrate `TicketStatus(str, Enum)` → `StrEnum` | `src/escalation/ticket_schemas.py` | ✅ |
 
 ---
 
