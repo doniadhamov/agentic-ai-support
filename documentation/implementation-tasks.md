@@ -50,14 +50,14 @@ Check off each task as it is completed.
 
 ---
 
-## Phase 4 — RAG Retrieval
+## Phase 4 — RAG Retrieval ✅
 
 | # | Task | File(s) | Status |
 |---|------|---------|--------|
-| 4.1 | `build_query(question, language) → str` | `src/rag/query_builder.py` | ⬜ |
-| 4.2 | `RAGRetriever.retrieve()`: embed text query, search both collections, merge + deduplicate | `src/rag/retriever.py` | ⬜ |
-| 4.3 | `ScoreThresholdFilter.filter()`: drop below `SUPPORT_MIN_CONFIDENCE_SCORE`, tag source | `src/rag/reranker.py` | ⬜ |
-| 4.4 | Integration test: seed Qdrant, test en/ru/uz retrieval precision | `tests/integration/test_rag_retrieval.py` | ⬜ |
+| 4.1 | `build_query(question, language) → str` | `src/rag/query_builder.py` | ✅ |
+| 4.2 | `RAGRetriever.retrieve()`: embed text query, search both collections, merge + deduplicate | `src/rag/retriever.py` | ✅ |
+| 4.3 | `ScoreThresholdFilter.filter()`: drop below `SUPPORT_MIN_CONFIDENCE_SCORE`, tag source | `src/rag/reranker.py` | ✅ |
+| 4.4 | Integration test: seed Qdrant, test en/ru/uz retrieval precision | `tests/integration/test_rag_retrieval.py` | ✅ |
 
 ---
 
