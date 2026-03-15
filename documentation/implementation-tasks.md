@@ -23,17 +23,17 @@ Check off each task as it is completed.
 
 ---
 
-## Phase 2 — Zendesk Ingestion Pipeline
+## Phase 2 — Zendesk Ingestion Pipeline ✅
 
 | # | Task | File(s) | Status |
 |---|------|---------|--------|
-| 2.1 | Async Zendesk API client: `/categories`, `/sections`, `/articles` with pagination + retry | `src/ingestion/zendesk_client.py` | ⬜ |
-| 2.2 | HTML → ordered `(text_block, image_url)` pairs via BeautifulSoup | `src/ingestion/article_processor.py` | ⬜ |
-| 2.3 | Async image byte download with local file cache | `src/ingestion/image_downloader.py` | ⬜ |
-| 2.4 | Sliding-window chunker → `ArticleChunk` Pydantic model | `src/ingestion/chunker.py` | ⬜ |
-| 2.5 | `SyncManager`: `full_ingest()` + `delta_sync()` via `updated_at` | `src/ingestion/sync_manager.py` | ⬜ |
-| 2.6 | CLI script: full ingestion with `--dry-run` flag | `scripts/ingest_zendesk.py` | ⬜ |
-| 2.7 | Unit tests: chunker with/without images, overlap | `tests/unit/test_chunker.py` | ⬜ |
+| 2.1 | Async Zendesk API client: `/categories`, `/sections`, `/articles` with pagination + retry | `src/ingestion/zendesk_client.py` | ✅ |
+| 2.2 | HTML → ordered `(text_block, image_url)` pairs via BeautifulSoup | `src/ingestion/article_processor.py` | ✅ |
+| 2.3 | Async image byte download with local file cache | `src/ingestion/image_downloader.py` | ✅ |
+| 2.4 | Sliding-window chunker → `ArticleChunk` Pydantic model | `src/ingestion/chunker.py` | ✅ |
+| 2.5 | `SyncManager`: `full_ingest()` + `delta_sync()` via `updated_at` | `src/ingestion/sync_manager.py` | ✅ |
+| 2.6 | CLI script: full ingestion with `--dry-run` flag | `scripts/ingest_zendesk.py` | ✅ |
+| 2.7 | Unit tests: chunker with/without images, overlap | `tests/unit/test_chunker.py` | ✅ |
 
 ---
 
