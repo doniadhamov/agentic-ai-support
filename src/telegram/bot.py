@@ -31,6 +31,9 @@ def create_bot() -> tuple[Bot, Dispatcher]:
     Returns:
         A ``(bot, dp)`` tuple ready for long-polling or webhook mode.
     """
+    from src.escalation.ticket_client import TicketAPIClient
+    from src.escalation.ticket_store import TicketStore
+
     settings = get_settings()
 
     bot = Bot(
@@ -40,12 +43,18 @@ def create_bot() -> tuple[Bot, Dispatcher]:
 
     dp = Dispatcher()
 
+    # --- Escalation components ----------------------------------------------
+    ticket_client = TicketAPIClient()
+    ticket_store = TicketStore()
+
     # --- Dependency injection via Dispatcher workflow data ------------------
-    agent = create_support_agent()
+    agent = create_support_agent(ticket_client=ticket_client, ticket_store=ticket_store)
     context_manager = ContextManager()
 
     dp["agent"] = agent
     dp["context_manager"] = context_manager
+    dp["ticket_store"] = ticket_store
+    dp["ticket_client"] = ticket_client
 
     # --- Register routers ---------------------------------------------------
     dp.include_router(message_router)
@@ -56,10 +65,19 @@ def create_bot() -> tuple[Bot, Dispatcher]:
 
 async def run_bot() -> None:
     """Start the bot in long-polling or webhook mode based on settings."""
+    from src.escalation.poller import TicketPoller
+
     setup_logging()
     settings = get_settings()
 
     bot, dp = create_bot()
+
+    # --- Start the ticket poller as a background task -----------------------
+    ticket_store = dp["ticket_store"]
+    ticket_client = dp["ticket_client"]
+    poller = TicketPoller(store=ticket_store, client=ticket_client, bot=bot)
+    asyncio.create_task(poller.run(), name="ticket_poller")
+    logger.info("TicketPoller background task started")
 
     if settings.telegram_webhook_url:
         await _run_webhook(bot, dp, settings.telegram_webhook_url)

@@ -10,9 +10,11 @@ from src.agent.extractor import QuestionExtractor
 from src.agent.generator import AnswerGenerator
 from src.agent.schemas import AgentInput, AgentOutput, MessageCategory
 from src.embeddings.gemini_embedder import GeminiEmbedder
+from src.escalation.ticket_client import TicketAPIClient
+from src.escalation.ticket_schemas import TicketCreate
+from src.escalation.ticket_store import TicketStore
 from src.rag.reranker import ScoreThresholdFilter
 from src.rag.retriever import RAGRetriever
-from src.vector_db.qdrant_client import QdrantWrapper
 
 
 class SupportAgent:
@@ -25,6 +27,7 @@ class SupportAgent:
           → extract standalone question + language
           → retrieve + filter chunks from Qdrant
           → generate grounded answer or escalation decision
+          → if escalated: create ticket via TicketAPIClient, persist in TicketStore
           → return AgentOutput
     """
 
@@ -35,12 +38,16 @@ class SupportAgent:
         retriever: RAGRetriever,
         reranker: ScoreThresholdFilter,
         generator: AnswerGenerator,
+        ticket_client: TicketAPIClient | None = None,
+        ticket_store: TicketStore | None = None,
     ) -> None:
         self._classifier = classifier
         self._extractor = extractor
         self._retriever = retriever
         self._reranker = reranker
         self._generator = generator
+        self._ticket_client = ticket_client
+        self._ticket_store = ticket_store
 
     async def process(self, agent_input: AgentInput) -> AgentOutput:
         """Process a single incoming Telegram message end-to-end.
@@ -127,6 +134,27 @@ class SupportAgent:
             else classification.category
         )
 
+        # --- Step 7: Create escalation ticket if needed -----------------------
+        ticket_id = ""
+        if generation.needs_escalation and self._ticket_client and self._ticket_store:
+            try:
+                ticket_payload = TicketCreate(
+                    group_id=agent_input.group_id,
+                    user_id=agent_input.user_id,
+                    message_id=agent_input.message_id,
+                    language=language,
+                    question=extraction.extracted_question,
+                    conversation_summary=extraction.conversation_summary,
+                )
+                ticket_record = await self._ticket_client.create_ticket(ticket_payload)
+                await self._ticket_store.add(ticket_record)
+                ticket_id = ticket_record.ticket_id
+                logger.bind(**log_ctx).info(
+                    "Escalation ticket created ticket_id={}", ticket_id
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.bind(**log_ctx).error("Failed to create escalation ticket — {}", exc)
+
         return AgentOutput(
             category=final_category,
             language=language,
@@ -137,17 +165,24 @@ class SupportAgent:
             needs_retrieval=True,
             needs_escalation=generation.needs_escalation,
             escalation_reason=generation.escalation_reason,
+            ticket_id=ticket_id,
             conversation_summary=extraction.conversation_summary,
             knowledge_sources_used=generation.knowledge_sources_used,
             store_resolution=generation.store_resolution,
         )
 
 
-def create_support_agent(anthropic_client: anthropic.AsyncAnthropic | None = None) -> SupportAgent:
+def create_support_agent(
+    anthropic_client: anthropic.AsyncAnthropic | None = None,
+    ticket_client: TicketAPIClient | None = None,
+    ticket_store: TicketStore | None = None,
+) -> SupportAgent:
     """Factory: build a :class:`SupportAgent` wired to live Qdrant and Gemini.
 
     Args:
         anthropic_client: Optional shared Anthropic async client.
+        ticket_client: Optional :class:`TicketAPIClient` for escalation.
+        ticket_store: Optional :class:`TicketStore` for escalation persistence.
 
     Returns:
         A fully configured :class:`SupportAgent`.
@@ -169,4 +204,6 @@ def create_support_agent(anthropic_client: anthropic.AsyncAnthropic | None = Non
         retriever=retriever,
         reranker=reranker,
         generator=generator,
+        ticket_client=ticket_client,
+        ticket_store=ticket_store,
     )
