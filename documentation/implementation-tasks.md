@@ -61,20 +61,20 @@ Check off each task as it is completed.
 
 ---
 
-## Phase 5 — AI Agent Core
+## Phase 5 — AI Agent Core ✅
 
 | # | Task | File(s) | Status |
 |---|------|---------|--------|
-| 5.1 | Pydantic schemas: `AgentInput`, `AgentOutput`, `ClassifierResult`, `ExtractorResult`, `GeneratorResult`, `KnowledgeSource` | `src/agent/schemas.py` | ⬜ |
-| 5.2 | Full system prompt constant (from `project-requirement.md`) | `src/agent/prompts/system_prompt.py` | ⬜ |
-| 5.3 | Classifier few-shot prompt (examples in en/ru/uz) | `src/agent/prompts/classifier_prompt.py` | ⬜ |
-| 5.4 | Extractor prompt | `src/agent/prompts/extractor_prompt.py` | ⬜ |
-| 5.5 | Generator prompt (grounded answer with retrieved chunks) | `src/agent/prompts/generator_prompt.py` | ⬜ |
-| 5.6 | `MessageClassifier.classify()` — Claude tool-use, temperature=0.0 | `src/agent/classifier.py` | ⬜ |
-| 5.7 | `QuestionExtractor.extract()` — Claude tool-use, temperature=0.0 | `src/agent/extractor.py` | ⬜ |
-| 5.8 | `AnswerGenerator.generate()` — Claude tool-use, temperature=0.2 | `src/agent/generator.py` | ⬜ |
-| 5.9 | `SupportAgent.process()` orchestrator | `src/agent/agent.py` | ⬜ |
-| 5.10 | Unit tests: all 4 classification categories, mocked Claude responses | `tests/unit/test_classifier.py`, `test_extractor.py`, `test_generator.py` | ⬜ |
+| 5.1 | Pydantic schemas: `AgentInput`, `AgentOutput`, `ClassifierResult`, `ExtractorResult`, `GeneratorResult`, `KnowledgeSource` | `src/agent/schemas.py` | ✅ |
+| 5.2 | Full system prompt constant (from `project-requirement.md`) | `src/agent/prompts/system_prompt.py` | ✅ |
+| 5.3 | Classifier few-shot prompt (examples in en/ru/uz) | `src/agent/prompts/classifier_prompt.py` | ✅ |
+| 5.4 | Extractor prompt | `src/agent/prompts/extractor_prompt.py` | ✅ |
+| 5.5 | Generator prompt (grounded answer with retrieved chunks) | `src/agent/prompts/generator_prompt.py` | ✅ |
+| 5.6 | `MessageClassifier.classify()` — Claude tool-use, temperature=0.0 | `src/agent/classifier.py` | ✅ |
+| 5.7 | `QuestionExtractor.extract()` — Claude tool-use, temperature=0.0 | `src/agent/extractor.py` | ✅ |
+| 5.8 | `AnswerGenerator.generate()` — Claude tool-use, temperature=0.2 | `src/agent/generator.py` | ✅ |
+| 5.9 | `SupportAgent.process()` orchestrator | `src/agent/agent.py` | ✅ |
+| 5.10 | Unit tests: all 4 classification categories, mocked Claude responses | `tests/unit/test_classifier.py`, `test_extractor.py`, `test_generator.py` | ✅ |
 
 ---
 
