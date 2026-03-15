@@ -17,7 +17,7 @@ and escalates unanswerable questions to human support via an external ticket API
 - **pydantic-settings** — typed config from `.env`
 - **loguru** — structured logging
 - **tenacity** — retries on all external calls
-- **Docker Compose** — local Qdrant instance
+- **Docker Compose** — full stack (Qdrant + bot) or Qdrant-only for local dev
 
 ## Project Layout
 
@@ -37,15 +37,82 @@ scripts/          — ingest_zendesk.py, sync_zendesk.py, check_qdrant.py
 tests/            — unit/ + integration/
 ```
 
-## Running Locally
+## Compose Files
+
+| File | Purpose |
+|---|---|
+| `docker-compose.yml` | Full stack — Qdrant + ingestion job + bot |
+| `docker-compose.qdrant.yml` | Qdrant only — for local development (bot runs on host) |
+
+## Running Locally (host machine, Qdrant in Docker)
 
 ```bash
 cp .env.example .env        # fill in all API keys
-docker compose up -d        # starts Qdrant on localhost:6333
+make qdrant-only            # starts Qdrant on localhost:6333
 uv sync                     # install dependencies
 uv run python scripts/ingest_zendesk.py   # initial doc ingestion
 uv run python -m src.telegram.bot         # start bot (long-polling)
 ```
+
+## Running Fully in Docker
+
+`docker-compose.yml` runs **everything** (Qdrant + ingestion + bot) inside Docker.
+
+### Step 1 — Prepare your `.env`
+
+```bash
+cp .env.example .env
+# Edit .env and fill in all API keys
+```
+
+> `QDRANT_URL` in `.env` can stay `http://localhost:6333` — the compose file overrides it
+> to `http://qdrant:6333` (internal Docker network) automatically.
+
+### Step 2 — Build the image
+
+```bash
+make build
+```
+
+### Step 3 — Run ingestion (first time only)
+
+```bash
+make ingest
+```
+
+Re-run any time to re-sync Zendesk content (idempotent).
+
+### Step 4 — Start the bot
+
+```bash
+make up
+```
+
+### Step 5 — Check logs
+
+```bash
+make logs
+```
+
+### Useful make targets
+
+| Target | What it does |
+|---|---|
+| `make build` | Build the bot Docker image |
+| `make up` | Start Qdrant + bot (detached) |
+| `make down` | Stop all services |
+| `make down-v` | Stop all services and wipe volumes |
+| `make ingest` | One-shot Zendesk ingestion |
+| `make sync` | One-shot Zendesk sync |
+| `make restart` | Restart bot container |
+| `make logs` | Follow bot logs |
+| `make qdrant-only` | Start Qdrant only (local dev) |
+| `make lint` | Run ruff check + format |
+| `make test` | Run all tests |
+| `make test-unit` | Unit tests only |
+| `make test-int` | Integration tests (requires Qdrant) |
+
+Open Qdrant dashboard: `http://localhost:6333/dashboard`
 
 ## Environment Variables (see .env.example for full list)
 
@@ -113,7 +180,7 @@ uv run pytest tests/integration/       # integration tests (requires local Qdran
 
 - Mock all external HTTP with `respx`
 - Mock Claude responses in unit tests via `pytest-mock`
-- Integration tests require local Qdrant running (`docker compose up -d`)
+- Integration tests require local Qdrant running (`make qdrant-only`)
 
 ## Commit Style
 

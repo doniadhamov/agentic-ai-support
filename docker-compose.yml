@@ -16,6 +16,36 @@ services:
       retries: 5
     restart: unless-stopped
 
+  ingest:
+    build: .
+    container_name: datatruck-ingest
+    command: uv run python scripts/ingest_zendesk.py
+    env_file: .env
+    environment:
+      QDRANT_URL: http://qdrant:6333
+    depends_on:
+      qdrant:
+        condition: service_healthy
+    volumes:
+      - logs:/app/logs
+    # Runs once and exits — restart: no
+    restart: "no"
+
+  bot:
+    build: .
+    container_name: datatruck-bot
+    env_file: .env
+    environment:
+      QDRANT_URL: http://qdrant:6333
+    depends_on:
+      qdrant:
+        condition: service_healthy
+    volumes:
+      - logs:/app/logs
+    restart: unless-stopped
+
 volumes:
   qdrant_data:
+    driver: local
+  logs:
     driver: local
