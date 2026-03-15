@@ -1,0 +1,60 @@
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# uv
+uv.lock
+.uv/
+
+# Type checking
+.mypy_cache/
+.dmypy.json
+
+# Linting
+.ruff_cache/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# Logs
+logs/
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local image cache (downloaded from Zendesk)
+.image_cache/
+
+# Ticket store persistence
+ticket_store.json
+
+# Qdrant local data (if running without Docker)
+qdrant_storage/

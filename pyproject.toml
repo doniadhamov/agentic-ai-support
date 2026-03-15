@@ -1,0 +1,68 @@
+[project]
+name = "agentic-ai-support"
+version = "0.1.0"
+description = "AI-powered Telegram support bot for DataTruck using multimodal RAG"
+requires-python = ">=3.12"
+dependencies = [
+    # Telegram
+    "aiogram>=3.7.0",
+    # LLM
+    "anthropic>=0.28.0",
+    # Embeddings
+    "google-generativeai>=0.7.0",
+    # Vector DB
+    "qdrant-client>=1.9.0",
+    # Async HTTP
+    "httpx>=0.27.0",
+    # Config & validation
+    "pydantic>=2.7.0",
+    "pydantic-settings>=2.3.0",
+    "python-dotenv>=1.0.0",
+    # HTML parsing (Zendesk article bodies)
+    "beautifulsoup4>=4.12.0",
+    "lxml>=5.2.0",
+    # Logging
+    "loguru>=0.7.0",
+    # Retries
+    "tenacity>=8.3.0",
+    # Language detection fallback
+    "langdetect>=1.0.9",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-mock>=3.14.0",
+    "respx>=0.21.0",
+    "ruff>=0.4.0",
+    "mypy>=1.10.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["src"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+ignore_missing_imports = true
+exclude = ["tests/"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
