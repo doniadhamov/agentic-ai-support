@@ -117,17 +117,17 @@ Check off each task as it is completed.
 
 ---
 
-## Phase 9 — Testing, Monitoring & Hardening
+## Phase 9 — Testing, Monitoring & Hardening ✅
 
 | # | Task | File(s) | Status |
 |---|------|---------|--------|
-| 9.1 | Complete unit test coverage for all agent components | `tests/unit/` | ⬜ |
-| 9.2 | Full E2E integration test: seed Qdrant → mock Telegram message → verify output | `tests/integration/` | ⬜ |
-| 9.3 | Structured loguru logs with `group_id`, `user_id`, `category`, `language`, `ticket_id` on every agent decision | (multiple) | ⬜ |
-| 9.4 | Verify tenacity retries consistently on all external calls | (multiple) | ⬜ |
-| 9.5 | Scheduled Zendesk sync inside bot process (`ZENDESK_SYNC_INTERVAL_HOURS`) | `src/telegram/bot.py` | ⬜ |
-| 9.6 | CLI: `scripts/sync_zendesk.py` delta sync | `scripts/sync_zendesk.py` | ⬜ |
-| 9.7 | README: quickstart, env var reference, architecture overview | `README.md` | ⬜ |
+| 9.1 | Complete unit test coverage for all agent components | `tests/unit/test_agent.py` | ✅ |
+| 9.2 | Full E2E integration test: seed Qdrant → mock Telegram message → verify output | `tests/integration/test_e2e.py` | ✅ |
+| 9.3 | Structured loguru logs with `group_id`, `user_id`, `category`, `language`, `ticket_id` on every agent decision | `src/agent/agent.py` | ✅ |
+| 9.4 | Verify tenacity retries consistently on all external calls | (multiple) | ✅ |
+| 9.5 | Scheduled Zendesk sync inside bot process (`ZENDESK_SYNC_INTERVAL_HOURS`) | `src/telegram/bot.py` | ✅ |
+| 9.6 | CLI: `scripts/sync_zendesk.py` delta sync | `scripts/sync_zendesk.py` | ✅ |
+| 9.7 | README: quickstart, env var reference, architecture overview | `README.md` | ✅ |
 
 ---
 

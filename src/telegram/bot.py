@@ -79,10 +79,55 @@ async def run_bot() -> None:
     asyncio.create_task(poller.run(), name="ticket_poller")
     logger.info("TicketPoller background task started")
 
+    # --- Start the scheduled Zendesk sync task ------------------------------
+    if settings.zendesk_sync_interval_hours > 0:
+        asyncio.create_task(
+            _run_zendesk_sync(settings.zendesk_sync_interval_hours),
+            name="zendesk_sync",
+        )
+        logger.info(
+            "Zendesk sync scheduled every {} hour(s)", settings.zendesk_sync_interval_hours
+        )
+
     if settings.telegram_webhook_url:
         await _run_webhook(bot, dp, settings.telegram_webhook_url)
     else:
         await _run_polling(bot, dp)
+
+
+async def _run_zendesk_sync(interval_hours: int) -> None:
+    """Run Zendesk delta sync on a recurring schedule.
+
+    Sleeps for *interval_hours* before the first run so the bot is fully
+    initialised, then re-syncs on every subsequent interval.
+    """
+    from src.ingestion.sync_manager import SyncManager
+    from src.vector_db.indexer import ArticleIndexer
+    from src.embeddings.gemini_embedder import GeminiEmbedder
+    from src.vector_db.qdrant_client import get_qdrant_client
+    from src.ingestion.chunker import ArticleChunk
+
+    interval_seconds = interval_hours * 3600
+
+    async def _index_chunks(chunks: list[ArticleChunk]) -> None:
+        embedder = GeminiEmbedder()
+        qdrant = get_qdrant_client()
+        indexer = ArticleIndexer(embedder=embedder, qdrant=qdrant)
+        for chunk in chunks:
+            await indexer.index_chunk(chunk)
+
+    while True:
+        await asyncio.sleep(interval_seconds)
+        try:
+            manager = SyncManager(on_chunks=_index_chunks)
+            stats = await manager.delta_sync()
+            logger.info(
+                "Scheduled Zendesk sync complete articles={} chunks={}",
+                stats["articles"],
+                stats["chunks"],
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Scheduled Zendesk sync failed — {}", exc)
 
 
 async def _run_polling(bot: Bot, dp: Dispatcher) -> None:

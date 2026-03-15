@@ -74,6 +74,8 @@ class SupportAgent:
             message_text=agent_input.message_text,
             conversation_context=agent_input.conversation_context,
         )
+        log_ctx["category"] = classification.category.value
+        log_ctx["language"] = classification.language
         logger.bind(**log_ctx).info(
             "category={} language={}", classification.category.value, classification.language
         )
@@ -168,6 +170,7 @@ class SupportAgent:
                 ticket_record = await self._ticket_client.create_ticket(ticket_payload)
                 await self._ticket_store.add(ticket_record)
                 ticket_id = ticket_record.ticket_id
+                log_ctx["ticket_id"] = ticket_id
                 logger.bind(**log_ctx).info(
                     "Escalation ticket created ticket_id={}", ticket_id
                 )
