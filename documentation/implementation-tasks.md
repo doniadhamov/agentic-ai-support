@@ -105,15 +105,15 @@ Check off each task as it is completed.
 
 ---
 
-## Phase 8 — Approved Memory
+## Phase 8 — Approved Memory ✅
 
 | # | Task | File(s) | Status |
 |---|------|---------|--------|
-| 8.1 | `ApprovedAnswer` Pydantic model | `src/memory/memory_schemas.py` | ⬜ |
-| 8.2 | `ApprovedMemory.store()`: embed question → upsert `datatruck_memory` | `src/memory/approved_memory.py` | ⬜ |
-| 8.3 | Verify `RAGRetriever` searches both collections + tags source type | `src/rag/retriever.py` | ⬜ |
-| 8.4 | Verify `generator.py` prefers docs over memory (per spec) | `src/agent/generator.py` | ⬜ |
-| 8.5 | Unit test: store answer, retrieve, verify above threshold | `tests/unit/test_approved_memory.py` | ⬜ |
+| 8.1 | `ApprovedAnswer` Pydantic model | `src/memory/memory_schemas.py` | ✅ |
+| 8.2 | `ApprovedMemory.store()`: embed question → upsert `datatruck_memory` | `src/memory/approved_memory.py` | ✅ |
+| 8.3 | Verify `RAGRetriever` searches both collections + tags source type | `src/rag/retriever.py` | ✅ |
+| 8.4 | Verify `generator.py` prefers docs over memory (per spec) | `src/agent/generator.py` | ✅ |
+| 8.5 | Unit test: store answer, retrieve, verify above threshold | `tests/unit/test_approved_memory.py` | ✅ |
 
 ---
 
