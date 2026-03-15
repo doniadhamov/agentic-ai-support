@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import asyncio
-import base64
-
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from loguru import logger
 from tenacity import retry, stop_after_attempt, wait_exponential
 
@@ -17,7 +15,7 @@ class GeminiEmbedder:
 
     def __init__(self) -> None:
         settings = get_settings()
-        genai.configure(api_key=settings.google_api_key)
+        self._client = genai.Client(api_key=settings.google_api_key)
         self._model = settings.gemini_embedding_model
 
     @retry(
@@ -35,13 +33,12 @@ class GeminiEmbedder:
             768-dimensional embedding vector.
         """
         logger.debug("Embedding text ({} chars)", len(text))
-        result = await asyncio.to_thread(
-            genai.embed_content,
+        result = await self._client.aio.models.embed_content(
             model=self._model,
-            content=text,
-            task_type="retrieval_document",
+            contents=text,
+            config=types.EmbedContentConfig(task_type="RETRIEVAL_DOCUMENT"),
         )
-        return result["embedding"]
+        return result.embeddings[0].values
 
     @retry(
         stop=stop_after_attempt(3),
@@ -62,23 +59,18 @@ class GeminiEmbedder:
             768-dimensional embedding vector.
         """
         logger.debug("Embedding multimodal content ({} chars + {} bytes image)", len(text), len(image_bytes))
-        image_part = {
-            "mime_type": "image/jpeg",
-            "data": base64.b64encode(image_bytes).decode(),
-        }
         try:
-            result = await asyncio.to_thread(
-                genai.embed_content,
+            image_part = types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg")
+            result = await self._client.aio.models.embed_content(
                 model=self._model,
-                content=[text, image_part],
-                task_type="retrieval_document",
+                contents=[text, image_part],
+                config=types.EmbedContentConfig(task_type="RETRIEVAL_DOCUMENT"),
             )
         except Exception:
             logger.warning("Multimodal embedding failed, falling back to text-only embedding")
-            result = await asyncio.to_thread(
-                genai.embed_content,
+            result = await self._client.aio.models.embed_content(
                 model=self._model,
-                content=text,
-                task_type="retrieval_document",
+                contents=text,
+                config=types.EmbedContentConfig(task_type="RETRIEVAL_DOCUMENT"),
             )
-        return result["embedding"]
+        return result.embeddings[0].values
