@@ -130,7 +130,6 @@ def _mock_anthropic(
                 knowledge_sources_used=[
                     {"type": "documentation", "title": "Password Reset Guide", "id": "9001"}
                 ],
-                store_resolution=True,
             ),
         ]
     )
@@ -259,7 +258,6 @@ async def test_e2e_escalation_creates_ticket(seeded_qdrant: QdrantWrapper) -> No
                 needs_escalation=True,
                 escalation_reason="Complex billing issue requiring human review.",
                 knowledge_sources_used=[],
-                store_resolution=False,
             ),
         ]
     )

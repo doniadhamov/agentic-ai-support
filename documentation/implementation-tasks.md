@@ -99,7 +99,7 @@ Check off each task as it is completed.
 | 7.1 | `TicketCreate`, `TicketRecord`, `TicketResponse` Pydantic models | `src/escalation/ticket_schemas.py` | ✅ |
 | 7.2 | `TicketAPIClient`: `create_ticket()`, `get_ticket_status()`, tenacity retry | `src/escalation/ticket_client.py` | ✅ |
 | 7.3 | `TicketStore`: in-memory + JSON file persistence, `add()`, `get_open_tickets()`, `close()` | `src/escalation/ticket_store.py` | ✅ |
-| 7.4 | `TicketPoller.run()`: poll loop → send Telegram reply → store approved answer → close ticket | `src/escalation/poller.py` | ✅ |
+| 7.4 | `TicketPoller.run()`: poll loop → send Telegram reply → store approved Q&A in `datatruck_memory` → close ticket | `src/escalation/poller.py` | ✅ |
 | 7.5 | Wire escalation into `agent.py` | `src/agent/agent.py` | ✅ |
 | 7.6 | Integration test: mock ticket API, verify create payload + response delivery | `tests/integration/test_escalation_flow.py` | ✅ |
 

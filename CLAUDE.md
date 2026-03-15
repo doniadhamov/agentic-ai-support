@@ -153,6 +153,12 @@ incoming Telegram group message
   → generator.py   →  grounded answer OR escalation decision
   → if escalated: ticket_client.create_ticket() + notify user
   → if resolved:  format_reply() + bot.send_message(reply_to=original_message_id)
+
+human support answers escalated ticket
+  → TicketPoller detects answered ticket
+  → delivers answer to Telegram group (reply to original message)
+  → stores approved Q&A in datatruck_memory via ApprovedMemory
+  → closes ticket in TicketStore
 ```
 
 ## Claude API Usage

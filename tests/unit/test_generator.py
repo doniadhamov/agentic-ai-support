@@ -17,7 +17,6 @@ def _make_tool_use_response(
     needs_escalation: bool = False,
     escalation_reason: str = "",
     knowledge_sources: list[dict] | None = None,
-    store_resolution: bool = False,
 ) -> MagicMock:
     block = MagicMock()
     block.type = "tool_use"
@@ -28,7 +27,6 @@ def _make_tool_use_response(
         "needs_escalation": needs_escalation,
         "escalation_reason": escalation_reason,
         "knowledge_sources_used": knowledge_sources or [],
-        "store_resolution": store_resolution,
     }
 
     response = MagicMock()
@@ -65,7 +63,6 @@ async def test_generate_returns_generator_result(mock_anthropic_client: MagicMoc
     mock_anthropic_client.messages.create.return_value = _make_tool_use_response(
         answer="To update the load status, go to Load Management and click 'Update Status'.",
         knowledge_sources=[{"type": "documentation", "title": "Load Management Guide", "id": "42"}],
-        store_resolution=True,
     )
     generator = AnswerGenerator(client=mock_anthropic_client)
 
@@ -78,7 +75,6 @@ async def test_generate_returns_generator_result(mock_anthropic_client: MagicMoc
     assert isinstance(result, GeneratorResult)
     assert "Update Status" in result.answer
     assert not result.needs_escalation
-    assert result.store_resolution is True
     assert len(result.knowledge_sources_used) == 1
     assert result.knowledge_sources_used[0].type == "documentation"
 

@@ -45,7 +45,6 @@ class AgentOutput(BaseModel):
     ticket_id: str = Field(default="", description="Ticket ID if a ticket was created")
     conversation_summary: str = Field(default="")
     knowledge_sources_used: list[KnowledgeSource] = Field(default_factory=list)
-    store_resolution: bool = Field(default=False)
 
 
 class ClassifierResult(BaseModel):
@@ -71,7 +70,3 @@ class GeneratorResult(BaseModel):
     needs_escalation: bool = Field(default=False)
     escalation_reason: str = Field(default="")
     knowledge_sources_used: list[KnowledgeSource] = Field(default_factory=list)
-    store_resolution: bool = Field(
-        default=False,
-        description="Whether to store this resolution in approved memory",
-    )

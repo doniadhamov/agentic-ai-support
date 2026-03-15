@@ -229,6 +229,94 @@ async def test_poller_delivers_answer_and_closes_ticket(tmp_store: TicketStore) 
 
 
 @pytest.mark.asyncio
+async def test_poller_stores_approved_memory_on_answer(tmp_store: TicketStore) -> None:
+    """Poller stores the human-approved Q&A pair in datatruck_memory."""
+    record = TicketRecord(
+        ticket_id="TKT-MEM-1",
+        group_id=-100777,
+        user_id=42,
+        message_id=15,
+        language="en",
+        question="How do I export data?",
+    )
+    await tmp_store.add(record)
+
+    mock_client = MagicMock(spec=TicketAPIClient)
+    mock_client.get_ticket_status = AsyncMock(
+        return_value=TicketResponse(
+            ticket_id="TKT-MEM-1",
+            status=TicketStatus.ANSWERED,
+            answer="Use the Export button in the dashboard.",
+        )
+    )
+
+    mock_bot = MagicMock()
+    mock_bot.send_message = AsyncMock()
+
+    mock_memory = MagicMock()
+    mock_memory.store = AsyncMock()
+
+    poller = TicketPoller(
+        store=tmp_store,
+        client=mock_client,
+        bot=mock_bot,
+        approved_memory=mock_memory,
+        interval=1,
+    )
+    await poller._poll_once()
+
+    mock_memory.store.assert_awaited_once()
+    stored = mock_memory.store.call_args[0][0]
+    assert stored.question == "How do I export data?"
+    assert stored.answer == "Use the Export button in the dashboard."
+    assert stored.ticket_id == "TKT-MEM-1"
+    assert stored.language == "en"
+
+
+@pytest.mark.asyncio
+async def test_poller_memory_failure_does_not_block_ticket_close(tmp_store: TicketStore) -> None:
+    """If approved memory storage fails, the ticket should still be closed."""
+    record = TicketRecord(
+        ticket_id="TKT-MEM-2",
+        group_id=-100666,
+        user_id=43,
+        message_id=16,
+        language="ru",
+        question="Как экспортировать данные?",
+    )
+    await tmp_store.add(record)
+
+    mock_client = MagicMock(spec=TicketAPIClient)
+    mock_client.get_ticket_status = AsyncMock(
+        return_value=TicketResponse(
+            ticket_id="TKT-MEM-2",
+            status=TicketStatus.ANSWERED,
+            answer="Нажмите кнопку Экспорт.",
+        )
+    )
+
+    mock_bot = MagicMock()
+    mock_bot.send_message = AsyncMock()
+
+    mock_memory = MagicMock()
+    mock_memory.store = AsyncMock(side_effect=RuntimeError("Qdrant down"))
+
+    poller = TicketPoller(
+        store=tmp_store,
+        client=mock_client,
+        bot=mock_bot,
+        approved_memory=mock_memory,
+        interval=1,
+    )
+    await poller._poll_once()
+
+    # Ticket should still be closed despite memory failure
+    closed = await tmp_store.get("TKT-MEM-2")
+    assert closed is not None
+    assert closed.status == TicketStatus.CLOSED
+
+
+@pytest.mark.asyncio
 async def test_poller_skips_open_tickets(tmp_store: TicketStore) -> None:
     """Poller does not send a reply when ticket is still OPEN."""
     record = TicketRecord(

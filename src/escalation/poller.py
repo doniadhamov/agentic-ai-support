@@ -9,8 +9,10 @@ from loguru import logger
 
 from src.config.settings import get_settings
 from src.escalation.ticket_client import TicketAPIClient
-from src.escalation.ticket_schemas import TicketStatus
+from src.escalation.ticket_schemas import TicketRecord, TicketStatus
 from src.escalation.ticket_store import TicketStore
+from src.memory.approved_memory import ApprovedMemory
+from src.memory.memory_schemas import ApprovedAnswer
 
 
 class TicketPoller:
@@ -18,12 +20,14 @@ class TicketPoller:
 
     When a ticket transitions to ``answered``:
     1. Sends the human answer as a reply to the original Telegram message.
-    2. Marks the ticket ``CLOSED`` in the :class:`TicketStore`.
+    2. Stores the approved Q&A pair in ``datatruck_memory`` for future retrieval.
+    3. Marks the ticket ``CLOSED`` in the :class:`TicketStore`.
 
     Args:
         store: Shared :class:`TicketStore` instance.
         client: :class:`TicketAPIClient` for status checks.
         bot: Aiogram :class:`Bot` used to send Telegram replies.
+        approved_memory: :class:`ApprovedMemory` for storing human-approved Q&A pairs.
         interval: Polling interval in seconds (defaults to the settings value).
     """
 
@@ -32,11 +36,13 @@ class TicketPoller:
         store: TicketStore,
         client: TicketAPIClient,
         bot: Bot,
+        approved_memory: ApprovedMemory | None = None,
         interval: int | None = None,
     ) -> None:
         self._store = store
         self._client = client
         self._bot = bot
+        self._approved_memory = approved_memory
         self._interval = interval or get_settings().ticket_poll_interval_seconds
 
     async def run(self) -> None:
@@ -69,7 +75,32 @@ class TicketPoller:
 
             if response.status == TicketStatus.ANSWERED and response.answer:
                 await self._deliver_answer(record.ticket_id, record.group_id, record.message_id, response.answer)
+                await self._store_approved_memory(record, response.answer)
                 await self._store.close(record.ticket_id, answer=response.answer)
+
+    async def _store_approved_memory(self, record: TicketRecord, answer: str) -> None:
+        """Store the human-approved Q&A pair in ``datatruck_memory``."""
+        if not self._approved_memory:
+            return
+        try:
+            await self._approved_memory.store(
+                ApprovedAnswer(
+                    question=record.question,
+                    answer=answer,
+                    language=record.language,
+                    ticket_id=record.ticket_id,
+                    group_id=record.group_id,
+                )
+            )
+            logger.info(
+                "TicketPoller: stored approved memory for ticket_id={}", record.ticket_id
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.error(
+                "TicketPoller: failed to store approved memory for ticket_id={} — {}",
+                record.ticket_id,
+                exc,
+            )
 
     async def _deliver_answer(
         self,

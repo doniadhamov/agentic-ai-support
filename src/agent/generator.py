@@ -54,10 +54,6 @@ _TOOL_SCHEMA: dict = {
                 },
                 "description": "List of knowledge sources used in the answer",
             },
-            "store_resolution": {
-                "type": "boolean",
-                "description": "True if this resolution should be stored in approved memory",
-            },
         },
         "required": ["answer", "needs_escalation"],
     },
@@ -145,16 +141,14 @@ class AnswerGenerator:
             needs_escalation=tool_input.get("needs_escalation", False),
             escalation_reason=tool_input.get("escalation_reason", ""),
             knowledge_sources_used=sources,
-            store_resolution=tool_input.get("store_resolution", False),
         )
 
         if result.needs_escalation:
             logger.info("Generator decided escalation: {}", result.escalation_reason)
         else:
             logger.info(
-                "Generated answer (sources={}, store={})",
+                "Generated answer (sources={})",
                 len(result.knowledge_sources_used),
-                result.store_resolution,
             )
 
         return result

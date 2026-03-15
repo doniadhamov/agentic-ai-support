@@ -283,8 +283,7 @@ Use this schema:
       "title": "",
       "id": ""
     }
-  ],
-  "store_resolution": false
+  ]
 }
 ```
 If category = NON_SUPPORT:

@@ -9,12 +9,10 @@ from src.agent.classifier import MessageClassifier
 from src.agent.extractor import QuestionExtractor
 from src.agent.generator import AnswerGenerator
 from src.agent.schemas import AgentInput, AgentOutput, MessageCategory
-from src.embeddings.gemini_embedder import GeminiEmbedder
 from src.escalation.ticket_client import TicketAPIClient
 from src.escalation.ticket_schemas import TicketCreate
 from src.escalation.ticket_store import TicketStore
 from src.memory.approved_memory import ApprovedMemory
-from src.memory.memory_schemas import ApprovedAnswer
 from src.rag.reranker import ScoreThresholdFilter
 from src.rag.retriever import RAGRetriever
 
@@ -140,22 +138,7 @@ class SupportAgent:
             else classification.category
         )
 
-        # --- Step 7: Store approved resolution in memory if flagged ----------
-        if generation.store_resolution and not generation.needs_escalation and self._approved_memory:
-            try:
-                await self._approved_memory.store(
-                    ApprovedAnswer(
-                        question=extraction.extracted_question,
-                        answer=generation.answer,
-                        language=language,
-                        group_id=agent_input.group_id,
-                    )
-                )
-                logger.bind(**log_ctx).info("Stored resolution in approved memory")
-            except Exception as exc:  # noqa: BLE001
-                logger.bind(**log_ctx).error("Failed to store approved memory — {}", exc)
-
-        # --- Step 8: Create escalation ticket if needed -----------------------
+        # --- Step 7: Create escalation ticket if needed -----------------------
         ticket_id = ""
         if generation.needs_escalation and self._ticket_client and self._ticket_store:
             try:
@@ -190,7 +173,6 @@ class SupportAgent:
             ticket_id=ticket_id,
             conversation_summary=extraction.conversation_summary,
             knowledge_sources_used=generation.knowledge_sources_used,
-            store_resolution=generation.store_resolution,
         )
 
 

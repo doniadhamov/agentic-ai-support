@@ -73,9 +73,19 @@ async def run_bot() -> None:
     bot, dp = create_bot()
 
     # --- Start the ticket poller as a background task -----------------------
+    from src.embeddings.gemini_embedder import GeminiEmbedder
+    from src.memory.approved_memory import ApprovedMemory
+    from src.vector_db.qdrant_client import get_qdrant_client
+
     ticket_store = dp["ticket_store"]
     ticket_client = dp["ticket_client"]
-    poller = TicketPoller(store=ticket_store, client=ticket_client, bot=bot)
+    approved_memory = ApprovedMemory(embedder=GeminiEmbedder(), qdrant=get_qdrant_client())
+    poller = TicketPoller(
+        store=ticket_store,
+        client=ticket_client,
+        bot=bot,
+        approved_memory=approved_memory,
+    )
     asyncio.create_task(poller.run(), name="ticket_poller")
     logger.info("TicketPoller background task started")
 

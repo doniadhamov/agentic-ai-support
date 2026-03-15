@@ -150,14 +150,14 @@ uv run pytest tests/integration/
 |---|---|---|
 | `tests/unit/test_classifier.py` | 7 | All 4 categories, 3 languages, error handling |
 | `tests/unit/test_extractor.py` | 6 | Question extraction, language detection |
-| `tests/unit/test_generator.py` | 8 | Answer generation, escalation, memory flag |
-| `tests/unit/test_agent.py` | 10 | Full orchestrator — mocked sub-components |
+| `tests/unit/test_generator.py` | 7 | Answer generation, escalation decision |
+| `tests/unit/test_agent.py` | 9 | Full orchestrator — mocked sub-components |
 | `tests/unit/test_group_context.py` | 10 | Sliding window, ticket tracking, concurrency |
 | `tests/unit/test_chunker.py` | 12 | Chunking, overlap, image association |
 | `tests/unit/test_approved_memory.py` | 8 | Memory storage, retrieval, threshold |
 | `tests/integration/test_ingestion_pipeline.py` | 2 | Ingest → Qdrant → verify |
 | `tests/integration/test_rag_retrieval.py` | 8 | en/ru/uz retrieval, dedup, threshold |
-| `tests/integration/test_escalation_flow.py` | 8 | Ticket create/poll/close cycle |
+| `tests/integration/test_escalation_flow.py` | 9 | Ticket create/poll/close cycle + approved memory |
 | `tests/integration/test_e2e.py` | 3 | Full agent flow: seed → classify → retrieve → answer |
 
 ## Linting and Formatting

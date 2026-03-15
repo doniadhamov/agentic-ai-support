@@ -27,7 +27,6 @@ def _make_agent(
     category: MessageCategory = MessageCategory.SUPPORT_QUESTION,
     language: str = "en",
     needs_escalation: bool = False,
-    store_resolution: bool = False,
     answer: str = "Here is your answer.",
     follow_up: str = "",
     ticket_client: object | None = None,
@@ -59,7 +58,6 @@ def _make_agent(
             needs_escalation=needs_escalation,
             escalation_reason="Cannot resolve" if needs_escalation else "",
             knowledge_sources_used=[source] if not needs_escalation else [],
-            store_resolution=store_resolution,
         )
     )
 
@@ -220,56 +218,23 @@ async def test_process_ticket_creation_failure_is_swallowed() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Approved memory
+# Approved memory — no automatic storage (requires human approval)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_process_stores_approved_memory_on_resolution() -> None:
+async def test_process_does_not_auto_store_memory() -> None:
+    """Memory storage must NOT happen automatically — it requires human approval."""
     approved_memory = MagicMock()
     approved_memory.store = AsyncMock()
 
     agent = _make_agent(
         category=MessageCategory.SUPPORT_QUESTION,
-        store_resolution=True,
-        approved_memory=approved_memory,
-    )
-    output = await agent.process(_make_input())
-
-    assert output.store_resolution is True
-    approved_memory.store.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_process_does_not_store_memory_on_escalation() -> None:
-    approved_memory = MagicMock()
-    approved_memory.store = AsyncMock()
-
-    agent = _make_agent(
-        category=MessageCategory.SUPPORT_QUESTION,
-        store_resolution=True,
-        needs_escalation=True,
         approved_memory=approved_memory,
     )
     await agent.process(_make_input())
 
-    # When escalating, memory storage must be skipped
     approved_memory.store.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_process_memory_storage_failure_is_swallowed() -> None:
-    approved_memory = MagicMock()
-    approved_memory.store = AsyncMock(side_effect=RuntimeError("Qdrant unreachable"))
-
-    agent = _make_agent(
-        category=MessageCategory.SUPPORT_QUESTION,
-        store_resolution=True,
-        approved_memory=approved_memory,
-    )
-    # Must not raise even though memory.store() fails
-    output = await agent.process(_make_input())
-    assert output.should_reply is True
 
 
 # ---------------------------------------------------------------------------

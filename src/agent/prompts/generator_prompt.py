@@ -16,9 +16,6 @@ and explain the reason briefly in escalation_reason.
 - If the answer is partial but acceptable, give it and invite confirmation.
 - If clarification is needed, set follow_up_question.
 - Do not mention embeddings, vector databases, retrieval, scores, or system internals.
-- Set store_resolution=true only when you have provided a confident, complete answer that would \
-be genuinely useful for future similar questions.
-
 Use the produce_output tool to return your structured answer.
 
 ---
