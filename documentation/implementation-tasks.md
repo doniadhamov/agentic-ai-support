@@ -78,17 +78,17 @@ Check off each task as it is completed.
 
 ---
 
-## Phase 6 — Telegram Integration
+## Phase 6 — Telegram Integration ✅
 
 | # | Task | File(s) | Status |
 |---|------|---------|--------|
-| 6.1 | `GroupContext`: `deque[MessageRecord]`, asyncio Lock, `open_tickets` | `src/telegram/context/group_context.py` | ⬜ |
-| 6.2 | `ContextManager` singleton: `get_or_create(chat_id)` | `src/telegram/context/context_manager.py` | ⬜ |
-| 6.3 | `format_reply(AgentOutput) → str`: Telegram Markdown, 4096-char limit | `src/telegram/formatter.py` | ⬜ |
-| 6.4 | aiogram Router: group/supergroup message handler, `reply_to_message_id` | `src/telegram/handlers/message_handler.py` | ⬜ |
-| 6.5 | Optional webhook handler for ticket push callbacks | `src/telegram/handlers/webhook_handler.py` | ⬜ |
-| 6.6 | `create_bot()`: Bot + Dispatcher, register handlers, start poller background task, long-poll/webhook toggle | `src/telegram/bot.py` | ⬜ |
-| 6.7 | Unit test: `GroupContext` sliding window, lock behaviour | `tests/unit/test_group_context.py` | ⬜ |
+| 6.1 | `GroupContext`: `deque[MessageRecord]`, asyncio Lock, `open_tickets` | `src/telegram/context/group_context.py` | ✅ |
+| 6.2 | `ContextManager` singleton: `get_or_create(chat_id)` | `src/telegram/context/context_manager.py` | ✅ |
+| 6.3 | `format_reply(AgentOutput) → str`: Telegram Markdown, 4096-char limit | `src/telegram/formatter.py` | ✅ |
+| 6.4 | aiogram Router: group/supergroup message handler, `reply_to_message_id` | `src/telegram/handlers/message_handler.py` | ✅ |
+| 6.5 | Optional webhook handler for ticket push callbacks | `src/telegram/handlers/webhook_handler.py` | ✅ |
+| 6.6 | `create_bot()`: Bot + Dispatcher, register handlers, start poller background task, long-poll/webhook toggle | `src/telegram/bot.py` | ✅ |
+| 6.7 | Unit test: `GroupContext` sliding window, lock behaviour | `tests/unit/test_group_context.py` | ✅ |
 
 ---
 
