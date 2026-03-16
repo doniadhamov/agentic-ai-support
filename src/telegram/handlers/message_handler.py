@@ -7,6 +7,7 @@ from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import Message
 from loguru import logger
 
+from src.admin.group_store import get_group_store
 from src.agent.agent import SupportAgent
 from src.agent.schemas import AgentInput
 from src.telegram.context.context_manager import ContextManager
@@ -33,6 +34,11 @@ async def handle_group_message(
         return
 
     chat_id: int = message.chat.id
+
+    # --- Group allowlist guard ------------------------------------------------
+    group_store = get_group_store()
+    if group_store.has_groups() and not group_store.is_allowed(chat_id):
+        return
     user_id: int = message.from_user.id
     message_id: int = message.message_id
     username: str = message.from_user.full_name or str(user_id)

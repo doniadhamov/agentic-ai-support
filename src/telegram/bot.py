@@ -95,9 +95,7 @@ async def run_bot() -> None:
             _run_zendesk_sync(settings.zendesk_sync_interval_hours),
             name="zendesk_sync",
         )
-        logger.info(
-            "Zendesk sync scheduled every {} hour(s)", settings.zendesk_sync_interval_hours
-        )
+        logger.info("Zendesk sync scheduled every {} hour(s)", settings.zendesk_sync_interval_hours)
 
     if settings.telegram_webhook_url:
         await _run_webhook(bot, dp, settings.telegram_webhook_url)

@@ -97,7 +97,9 @@ async def wrapper(qdrant_client: AsyncQdrantClient) -> QdrantWrapper:
 
 
 @pytest.mark.asyncio
-async def test_ingest_and_retrieve(wrapper: QdrantWrapper, qdrant_client: AsyncQdrantClient) -> None:
+async def test_ingest_and_retrieve(
+    wrapper: QdrantWrapper, qdrant_client: AsyncQdrantClient
+) -> None:
     """Ingest 3 chunks with mock embeddings and verify retrieval by vector search."""
     await create_collections_if_not_exist(qdrant_client)
 

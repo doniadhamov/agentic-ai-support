@@ -112,7 +112,9 @@ class GeminiEmbedder:
         Returns:
             Embedding vector with configured dimensionality.
         """
-        logger.debug("Embedding multimodal content ({} chars + {} bytes image)", len(text), len(image_bytes))
+        logger.debug(
+            "Embedding multimodal content ({} chars + {} bytes image)", len(text), len(image_bytes)
+        )
         try:
             image_part = types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg")
             result = await self._client.aio.models.embed_content(

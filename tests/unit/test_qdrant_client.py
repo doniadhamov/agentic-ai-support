@@ -109,9 +109,7 @@ async def test_upsert_points_delegates(
 
     await wrapper.upsert_points("col", points)
 
-    mock_async_client.upsert.assert_awaited_once_with(
-        collection_name="col", points=points
-    )
+    mock_async_client.upsert.assert_awaited_once_with(collection_name="col", points=points)
 
 
 # ---------------------------------------------------------------------------

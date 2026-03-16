@@ -11,7 +11,6 @@ from src.utils.language import (
     normalize_language,
 )
 
-
 # ---------------------------------------------------------------------------
 # normalize_language
 # ---------------------------------------------------------------------------
@@ -82,7 +81,7 @@ def test_detect_failure_falls_back_to_default() -> None:
 
 
 def test_supported_languages_set() -> None:
-    assert SUPPORTED_LANGUAGES == {"en", "ru", "uz"}
+    assert {"en", "ru", "uz"} == SUPPORTED_LANGUAGES
 
 
 def test_default_language_is_english() -> None:

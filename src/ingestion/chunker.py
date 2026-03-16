@@ -103,7 +103,11 @@ def chunk_article(
         orphan_image = None
         if merged and merged[-1][1] == seg_image:
             prev_text, prev_image = merged[-1]
-            joined = (prev_text + " " + seg_text).strip() if prev_text and seg_text else (prev_text or seg_text)
+            joined = (
+                (prev_text + " " + seg_text).strip()
+                if prev_text and seg_text
+                else (prev_text or seg_text)
+            )
             merged[-1] = (joined, prev_image)
         else:
             merged.append((seg_text, seg_image))

@@ -75,7 +75,9 @@ class TicketPoller:
                 continue
 
             if response.status == TicketStatus.ANSWERED and response.answer:
-                await self._deliver_answer(record.ticket_id, record.group_id, record.message_id, response.answer)
+                await self._deliver_answer(
+                    record.ticket_id, record.group_id, record.message_id, response.answer
+                )
                 await self._store_approved_memory(record, response.answer)
                 await self._store.close(record.ticket_id, answer=response.answer)
 
@@ -93,9 +95,7 @@ class TicketPoller:
                     group_id=record.group_id,
                 )
             )
-            logger.info(
-                "TicketPoller: stored approved memory for ticket_id={}", record.ticket_id
-            )
+            logger.info("TicketPoller: stored approved memory for ticket_id={}", record.ticket_id)
         except Exception as exc:  # noqa: BLE001
             logger.error(
                 "TicketPoller: failed to store approved memory for ticket_id={} — {}",

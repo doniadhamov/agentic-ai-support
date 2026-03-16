@@ -57,7 +57,9 @@ def test_long_text_is_split_into_multiple_chunks() -> None:
     # 3 000 chars → should produce more than 1 chunk with size=1000, overlap=200
     long_text = "A" * 3_000
     blocks = [text_block(long_text)]
-    chunks = chunk_article(content_blocks=blocks, chunk_size=1_000, chunk_overlap=200, **BASE_KWARGS)
+    chunks = chunk_article(
+        content_blocks=blocks, chunk_size=1_000, chunk_overlap=200, **BASE_KWARGS
+    )
     assert len(chunks) > 1
 
 
@@ -91,7 +93,7 @@ def test_overlap_creates_shared_content() -> None:
     )
     assert len(chunks) >= 2
     # The tail of chunk 0 should appear somewhere in the head of chunk 1
-    tail_of_first = chunks[0].text[-(overlap // 2):]
+    tail_of_first = chunks[0].text[-(overlap // 2) :]
     assert tail_of_first in chunks[1].text
 
 
@@ -136,7 +138,9 @@ def test_multiple_images_in_article() -> None:
         image_block("https://example.com/img2.png"),
         text_block("Third section text."),
     ]
-    chunks = chunk_article(content_blocks=blocks, chunk_size=2_000, chunk_overlap=100, **BASE_KWARGS)
+    chunks = chunk_article(
+        content_blocks=blocks, chunk_size=2_000, chunk_overlap=100, **BASE_KWARGS
+    )
     # All images should be referenced somewhere
     all_image_urls = {c.image_url for c in chunks if c.image_url}
     assert "https://example.com/img1.png" in all_image_urls

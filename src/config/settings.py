@@ -24,7 +24,9 @@ class Settings(BaseSettings):
     # --- Google Gemini ---
     google_api_key: str = Field(..., description="Google API key for Gemini embeddings")
     gemini_embedding_model: str = Field(default="models/gemini-embedding-2-preview")
-    gemini_embedding_dimensions: int = Field(default=3072, description="Output dimensionality for embeddings")
+    gemini_embedding_dimensions: int = Field(
+        default=3072, description="Output dimensionality for embeddings"
+    )
 
     # --- Qdrant ---
     qdrant_url: str = Field(default="http://localhost:6333")
@@ -46,6 +48,12 @@ class Settings(BaseSettings):
     group_context_window: int = Field(default=20, ge=1, le=100)
     rag_top_k: int = Field(default=5, ge=1, le=20)
     zendesk_sync_interval_hours: int = Field(default=6, ge=0)
+
+    # --- Admin Dashboard ---
+    admin_password: str = Field(default="", description="Dashboard password; empty = no auth")
+    allowed_groups_file: str = Field(
+        default="data/allowed_groups.json", description="Path to group allowlist JSON"
+    )
 
     # --- Logging ---
     log_level: str = Field(default="INFO")

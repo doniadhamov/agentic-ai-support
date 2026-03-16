@@ -24,6 +24,7 @@ def detect_language_fallback(text: str) -> str:
     """Fallback language detection using langdetect library."""
     try:
         from langdetect import detect  # type: ignore[import-untyped]
+
         code = detect(text)
         return normalize_language(code)
     except Exception as e:

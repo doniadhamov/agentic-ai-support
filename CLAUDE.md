@@ -27,11 +27,12 @@ src/
   telegram/       — bot.py, handlers/, formatter.py, context/ (per-group sliding window + asyncio Lock)
   agent/          — agent.py (orchestrator), classifier, extractor, generator, prompts/, schemas.py
   rag/            — retriever.py, reranker.py, query_builder.py
-  ingestion/      — zendesk_client.py, article_processor.py, image_downloader.py, chunker.py, sync_manager.py
+  ingestion/      — zendesk_client.py, article_processor.py, image_downloader.py, chunker.py, sync_manager.py, file_parser.py
   vector_db/      — qdrant_client.py, collections.py, indexer.py
   embeddings/     — gemini_embedder.py
   escalation/     — ticket_client.py, ticket_store.py, poller.py, ticket_schemas.py
   memory/         — approved_memory.py, memory_schemas.py
+  admin/          — group_store.py, file_ingest.py, schemas.py, dashboard/ (Streamlit admin UI)
   utils/          — logging.py, language.py, retry.py
 scripts/          — ingest_zendesk.py, sync_zendesk.py, check_qdrant.py
 tests/            — unit/ + integration/
@@ -41,7 +42,7 @@ tests/            — unit/ + integration/
 
 | File | Purpose |
 |---|---|
-| `docker-compose.yml` | Full stack — Qdrant + ingestion job + bot |
+| `docker-compose.yml` | Full stack — Qdrant + ingestion job + bot + admin dashboard |
 | `docker-compose.qdrant.yml` | Qdrant only — for local development (bot runs on host) |
 
 ## Running Locally (host machine, Qdrant in Docker)
@@ -107,12 +108,16 @@ make logs
 | `make restart` | Restart bot container |
 | `make logs` | Follow bot logs |
 | `make qdrant-only` | Start Qdrant only (local dev) |
+| `make dashboard` | Start admin dashboard (Docker) |
+| `make dashboard-local` | Start admin dashboard locally |
+| `make dashboard-logs` | Follow dashboard logs |
 | `make lint` | Run ruff check + format |
 | `make test` | Run all tests |
 | `make test-unit` | Unit tests only |
 | `make test-int` | Integration tests (requires Qdrant) |
 
 Open Qdrant dashboard: `http://localhost:6333/dashboard`
+Open Admin dashboard: `http://localhost:8501`
 
 ## Environment Variables (see .env.example for full list)
 
@@ -130,6 +135,8 @@ Open Qdrant dashboard: `http://localhost:6333/dashboard`
 | `SUPPORT_MIN_CONFIDENCE_SCORE` | Min Qdrant score to accept chunk (default: `0.75`) |
 | `GROUP_CONTEXT_WINDOW` | Recent messages to keep per group (default: `20`) |
 | `TICKET_POLL_INTERVAL_SECONDS` | Ticket polling interval (default: `60`) |
+| `ADMIN_PASSWORD` | Admin dashboard password (default: empty = no auth) |
+| `ALLOWED_GROUPS_FILE` | Path to group allowlist JSON (default: `data/allowed_groups.json`) |
 | `LOG_LEVEL` | Log level (default: `INFO`) |
 
 ## Code Conventions
@@ -145,6 +152,7 @@ Open Qdrant dashboard: `http://localhost:6333/dashboard`
 
 ```
 incoming Telegram group message
+  → GroupStore.is_allowed(group_id) — skip if group not in allowlist
   → GroupContext.add_message()
   → classifier.py  →  NON_SUPPORT | SUPPORT_QUESTION | CLARIFICATION_NEEDED | ESCALATION_REQUIRED
   → extractor.py   →  clean standalone question + language
@@ -174,6 +182,19 @@ human support answers escalated ticket
 - Generator returns documentation content verbatim — prompts instruct no rephrasing/summarizing
 - Knowledge sources (titles + URLs) are built from retrieved chunks, not from Claude output
 - Model: `claude-sonnet-4-6` (configurable via `ANTHROPIC_MODEL`)
+
+## Admin Dashboard
+
+Streamlit-based admin UI at port 8501 with four pages:
+
+- **Groups** — manage Telegram group allowlist (add/remove, runtime changes take effect within 5s)
+- **Knowledge Base** — browse Qdrant collections, view points, trigger Zendesk sync
+- **Upload** — ingest PDF/DOCX/TXT files into `datatruck_docs` (reuses chunker + embedder + indexer pipeline)
+- **Tickets** — read-only view of escalated tickets from `data/tickets.json`
+
+Group allowlist is shared between bot and dashboard via `data/allowed_groups.json`.
+When the allowlist is empty, the bot accepts all groups (backward-compatible).
+File upload uses deterministic article IDs (offset from 10,000,000) to avoid collision with Zendesk IDs.
 
 ## Qdrant Collections
 

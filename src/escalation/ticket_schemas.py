@@ -38,9 +38,7 @@ class TicketRecord(BaseModel):
     question: str
     status: TicketStatus = Field(default=TicketStatus.OPEN)
     answer: str = Field(default="", description="Human answer; populated when status=answered")
-    created_at: datetime = Field(
-        default_factory=lambda: datetime.now(tz=UTC)
-    )
+    created_at: datetime = Field(default_factory=lambda: datetime.now(tz=UTC))
 
 
 class TicketResponse(BaseModel):

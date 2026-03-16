@@ -80,9 +80,7 @@ class ArticleIndexer:
             point_id,
         )
 
-    async def _embed_one(
-        self, chunk: ArticleChunk, semaphore: asyncio.Semaphore
-    ) -> PointStruct:
+    async def _embed_one(self, chunk: ArticleChunk, semaphore: asyncio.Semaphore) -> PointStruct:
         """Embed a single chunk (with concurrency limit) and return a PointStruct."""
         async with semaphore:
             image_bytes: bytes | None = None
@@ -106,9 +104,7 @@ class ArticleIndexer:
             return
 
         semaphore = asyncio.Semaphore(_CONCURRENCY)
-        points = await asyncio.gather(
-            *(self._embed_one(chunk, semaphore) for chunk in chunks)
-        )
+        points = await asyncio.gather(*(self._embed_one(chunk, semaphore) for chunk in chunks))
 
         await self._qdrant.upsert_points(DOCS_COLLECTION, list(points))
         logger.info(

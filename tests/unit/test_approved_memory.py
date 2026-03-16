@@ -43,7 +43,9 @@ def approved_memory(mock_embedder: MagicMock, mock_qdrant: MagicMock) -> Approve
 async def test_store_calls_embed_text(
     approved_memory: ApprovedMemory, mock_embedder: MagicMock
 ) -> None:
-    approved = ApprovedAnswer(question="How do I reset a password?", answer="Go to Settings > Reset.")
+    approved = ApprovedAnswer(
+        question="How do I reset a password?", answer="Go to Settings > Reset."
+    )
     await approved_memory.store(approved)
     mock_embedder.embed_text.assert_awaited_once_with("How do I reset a password?")
 
@@ -52,7 +54,9 @@ async def test_store_calls_embed_text(
 async def test_store_upserts_into_memory_collection(
     approved_memory: ApprovedMemory, mock_qdrant: MagicMock
 ) -> None:
-    approved = ApprovedAnswer(question="How do I reset a password?", answer="Go to Settings > Reset.")
+    approved = ApprovedAnswer(
+        question="How do I reset a password?", answer="Go to Settings > Reset."
+    )
     await approved_memory.store(approved)
 
     mock_qdrant.upsert_points.assert_awaited_once()

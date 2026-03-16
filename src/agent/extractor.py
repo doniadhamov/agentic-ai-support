@@ -68,11 +68,7 @@ class QuestionExtractor:
             formatted = "\n".join(f"- {m}" for m in conversation_context[-10:])
             context_block = f"\nRECENT CONTEXT:\n{formatted}\n"
 
-        user_content = (
-            f"{EXTRACTOR_PROMPT}"
-            f"{context_block}"
-            f"\nMESSAGE:\n{message_text}"
-        )
+        user_content = f"{EXTRACTOR_PROMPT}{context_block}\nMESSAGE:\n{message_text}"
 
         logger.debug("Extracting question from message (len={})", len(message_text))
 

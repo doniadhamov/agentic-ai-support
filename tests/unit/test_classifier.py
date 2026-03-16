@@ -15,7 +15,12 @@ def _make_tool_use_response(category: str, language: str = "en") -> MagicMock:
     block = MagicMock()
     block.type = "tool_use"
     block.name = "produce_output"
-    block.input = {"category": category, "language": language, "confidence": 0.95, "reasoning": "test"}
+    block.input = {
+        "category": category,
+        "language": language,
+        "confidence": 0.95,
+        "reasoning": "test",
+    }
 
     response = MagicMock()
     response.content = [block]

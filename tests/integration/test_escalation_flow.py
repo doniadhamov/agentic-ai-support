@@ -74,6 +74,7 @@ async def test_create_ticket_sends_correct_payload(ticket_create_payload: Ticket
     # Verify the request body contained the full payload
     sent_request = mock.calls[0].request
     import json
+
     body = json.loads(sent_request.content)
     assert body["question"] == ticket_create_payload.question
     assert body["language"] == "en"

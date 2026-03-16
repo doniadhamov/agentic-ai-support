@@ -8,9 +8,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from aiogram.exceptions import TelegramBadRequest
 
-from src.agent.schemas import AgentOutput, KnowledgeSource, MessageCategory
+from src.agent.schemas import AgentOutput, MessageCategory
 from src.telegram.handlers.message_handler import handle_group_message
-
 
 # ---------------------------------------------------------------------------
 # Helpers

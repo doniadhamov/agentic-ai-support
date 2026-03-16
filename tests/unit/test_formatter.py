@@ -40,7 +40,9 @@ def test_plain_answer() -> None:
 
 
 def test_answer_with_doc_source_link() -> None:
-    src = KnowledgeSource(type="documentation", title="Guide", id="1", url="https://example.com/guide")
+    src = KnowledgeSource(
+        type="documentation", title="Guide", id="1", url="https://example.com/guide"
+    )
     result = format_reply(_output(answer="See the guide.", sources=[src]))
     assert "For more information" in result
     # URL is inside a MarkdownV2 escaped string, so check the domain is present
@@ -275,7 +277,9 @@ def test_link_with_parentheses_in_url() -> None:
 
 
 def test_link_with_query_params() -> None:
-    result = format_reply(_output(answer="Check [results](https://example.com/search?q=test&page=1)"))
+    result = format_reply(
+        _output(answer="Check [results](https://example.com/search?q=test&page=1)")
+    )
     assert "results" in result
     assert "example" in result
 

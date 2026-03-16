@@ -75,11 +75,7 @@ class MessageClassifier:
             formatted = "\n".join(f"- {m}" for m in conversation_context[-10:])
             context_block = f"\nRECENT CONTEXT:\n{formatted}\n"
 
-        user_content = (
-            f"{CLASSIFIER_PROMPT}"
-            f"{context_block}"
-            f"\nMESSAGE:\n{message_text}"
-        )
+        user_content = f"{CLASSIFIER_PROMPT}{context_block}\nMESSAGE:\n{message_text}"
 
         logger.debug("Classifying message (len={})", len(message_text))
 

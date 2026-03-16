@@ -1,4 +1,4 @@
-.PHONY: help build up down logs restart ingest sync lint test test-unit test-integration qdrant-only
+.PHONY: help build up down logs restart ingest sync lint test test-unit test-integration qdrant-only dashboard dashboard-local dashboard-logs
 
 help:
 	@echo "Usage: make <target>"
@@ -12,6 +12,11 @@ help:
 	@echo "  restart        Restart the bot service"
 	@echo "  ingest         Run one-shot Zendesk ingestion"
 	@echo "  sync           Run one-shot Zendesk sync"
+	@echo ""
+	@echo "Admin dashboard:"
+	@echo "  dashboard      Start admin dashboard (Docker)"
+	@echo "  dashboard-local  Start admin dashboard locally"
+	@echo "  dashboard-logs Follow dashboard logs"
 	@echo ""
 	@echo "Local development (Qdrant only):"
 	@echo "  qdrant-only    Start only Qdrant (for local dev)"
@@ -47,6 +52,17 @@ ingest:
 
 sync:
 	docker compose run --rm ingest uv run python scripts/sync_zendesk.py
+
+# ── Admin dashboard ───────────────────────────────────────────────────────────
+
+dashboard:
+	docker compose up -d dashboard
+
+dashboard-local:
+	uv run streamlit run src/admin/dashboard/app.py
+
+dashboard-logs:
+	docker compose logs -f dashboard
 
 # ── Local development ──────────────────────────────────────────────────────────
 

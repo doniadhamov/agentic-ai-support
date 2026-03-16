@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from src.ingestion.article_processor import ContentBlock, process_article_html
 
-
 # ---------------------------------------------------------------------------
 # Text extraction
 # ---------------------------------------------------------------------------
@@ -89,11 +88,7 @@ def test_multiple_images_interleaved_with_text() -> None:
 
 
 def test_order_preserved() -> None:
-    html = (
-        "<p>Before</p>"
-        '<img src="https://example.com/mid.png"/>'
-        "<p>After</p>"
-    )
+    html = '<p>Before</p><img src="https://example.com/mid.png"/><p>After</p>'
     blocks = process_article_html(html)
     assert blocks[0].is_text
     assert blocks[1].is_image

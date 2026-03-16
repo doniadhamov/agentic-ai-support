@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-import pytest
-
 from src.rag.reranker import ScoreThresholdFilter
 from src.rag.retriever import RetrievedChunk
-
 
 # ---------------------------------------------------------------------------
 # Helpers

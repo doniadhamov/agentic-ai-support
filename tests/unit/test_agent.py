@@ -111,9 +111,7 @@ async def test_process_non_support_no_reply() -> None:
 
 @pytest.mark.asyncio
 async def test_process_support_question_returns_answer() -> None:
-    agent = _make_agent(
-        category=MessageCategory.SUPPORT_QUESTION, answer="Go to Settings → Reset."
-    )
+    agent = _make_agent(category=MessageCategory.SUPPORT_QUESTION, answer="Go to Settings → Reset.")
     output = await agent.process(_make_input())
 
     assert output.should_reply is True

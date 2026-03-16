@@ -154,9 +154,7 @@ class SupportAgent:
                 await self._ticket_store.add(ticket_record)
                 ticket_id = ticket_record.ticket_id
                 log_ctx["ticket_id"] = ticket_id
-                logger.bind(**log_ctx).info(
-                    "Escalation ticket created ticket_id={}", ticket_id
-                )
+                logger.bind(**log_ctx).info("Escalation ticket created ticket_id={}", ticket_id)
             except Exception as exc:  # noqa: BLE001
                 logger.bind(**log_ctx).error("Failed to create escalation ticket — {}", exc)
 
