@@ -187,14 +187,16 @@ human support answers escalated ticket
 
 Streamlit-based admin UI at port 8501 with four pages:
 
-- **Groups** — manage Telegram group allowlist (add/remove, runtime changes take effect within 5s)
-- **Knowledge Base** — browse Qdrant collections, view points, trigger Zendesk sync
-- **Upload** — ingest PDF/DOCX/TXT files into `datatruck_docs` (reuses chunker + embedder + indexer pipeline)
-- **Tickets** — read-only view of escalated tickets from `data/tickets.json`
+- **Home** — live metrics (active groups, ingested articles, memory entries, open tickets) + navigation cards
+- **Groups** — manage Telegram group allowlist (add/remove, search, runtime changes take effect within 5s)
+- **Knowledge Base** — tabbed browser for `datatruck_docs` / `datatruck_memory`; Delta Sync (24h) and Full Re-ingest buttons; auto-creates collections if missing; paginated point table; delete by UUID
+- **Upload** — ingest PDF/DOCX/TXT/MD files into `datatruck_docs` (parse → chunk → embed → index pipeline)
+- **Tickets** — read-only view of escalated tickets from `data/tickets.json` with status metrics, search, and detail view
 
 Group allowlist is shared between bot and dashboard via `data/allowed_groups.json`.
 When the allowlist is empty, the bot accepts all groups (backward-compatible).
 File upload uses deterministic article IDs (offset from 10,000,000) to avoid collision with Zendesk IDs.
+Full Re-ingest from the dashboard is equivalent to running `scripts/ingest_zendesk.py`.
 
 ## Qdrant Collections
 

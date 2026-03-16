@@ -52,6 +52,7 @@ def _render_collection(collection: str) -> None:
     """Render stats, sync controls, and point browser for a collection."""
 
     # --- Collection stats ---
+    collection_exists = True
     try:
         info = run_async(qdrant.get_collection_info(collection))
         point_count = info.points_count or 0
@@ -68,15 +69,37 @@ def _render_collection(collection: str) -> None:
         with c4:
             status_val = info.status.value if info.status else "unknown"
             st.metric("Status", status_val.capitalize())
-    except Exception as exc:
-        st.error(f"Failed to fetch collection info: {exc}")
-        st.stop()
+    except Exception:
+        collection_exists = False
+        st.warning(
+            f"Collection **{collection}** does not exist yet. "
+            "Run a **Full Re-ingest** or use the button below to create it."
+        )
+        if st.button(
+            "🏗️ Create Collection",
+            key=f"create_{collection}",
+            type="primary",
+        ):
+            with st.spinner(f"Creating collection {collection}..."):
+                try:
+                    from src.vector_db.collections import create_collections_if_not_exist
+
+                    run_async(create_collections_if_not_exist(qdrant._client))
+                    st.success(f"Collection **{collection}** created successfully!")
+                    st.rerun()
+                except Exception as exc:
+                    st.error(f"Failed to create collection: {exc}")
 
     st.markdown("")
 
     # --- Sync controls (only for docs collection) ---
     if collection == DOCS_COLLECTION:
         st.markdown("#### 🔄 Zendesk Sync")
+
+        success_msg = st.session_state.pop(f"ingest_success_{collection}", None)
+        if success_msg:
+            st.success(success_msg)
+
         sync_col1, sync_col2, sync_col3 = st.columns([2, 2, 3])
 
         with sync_col1:
@@ -88,6 +111,9 @@ def _render_collection(collection: str) -> None:
                         from src.vector_db.indexer import ArticleIndexer
 
                         async def _delta_sync() -> dict:
+                            from src.vector_db.collections import create_collections_if_not_exist
+
+                            await create_collections_if_not_exist(qdrant._client)
                             embedder = GeminiEmbedder()
                             indexer = ArticleIndexer(embedder=embedder, qdrant=qdrant)
 
@@ -123,6 +149,9 @@ def _render_collection(collection: str) -> None:
                                 from src.vector_db.indexer import ArticleIndexer
 
                                 async def _full_ingest() -> dict:
+                                    from src.vector_db.collections import create_collections_if_not_exist
+
+                                    await create_collections_if_not_exist(qdrant._client)
                                     embedder = GeminiEmbedder()
                                     indexer = ArticleIndexer(embedder=embedder, qdrant=qdrant)
 
@@ -133,12 +162,14 @@ def _render_collection(collection: str) -> None:
                                     return await mgr.full_ingest()
 
                                 stats = run_async(_full_ingest())
-                                st.success(
+                                st.session_state[f"ingest_success_{collection}"] = (
                                     f"Ingested **{stats['articles']}** article(s), "
                                     f"**{stats['chunks']}** chunk(s)"
                                 )
                             except Exception as exc:
+                                st.session_state[f"ingest_success_{collection}"] = None
                                 st.error(f"Ingestion failed: {exc}")
+                        st.rerun()
                 with confirm_col2:
                     if st.button("❌ Cancel", key=f"confirm_no_{collection}"):
                         st.session_state[f"show_full_confirm_{collection}"] = False
@@ -147,6 +178,9 @@ def _render_collection(collection: str) -> None:
         st.divider()
 
     # --- Browse points ---
+    if not collection_exists:
+        return
+
     st.markdown("#### 🔎 Browse Points")
 
     # Pagination state

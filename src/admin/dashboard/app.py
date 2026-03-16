@@ -254,8 +254,9 @@ def main() -> None:
     groups = group_store.list_groups()
     ticket_counts = _load_ticket_counts()
 
-    # Try to get Qdrant point counts
+    # Try to get Qdrant point counts and distinct article count
     docs_count = 0
+    docs_articles = 0
     memory_count = 0
     try:
         from src.vector_db.collections import DOCS_COLLECTION, MEMORY_COLLECTION
@@ -264,6 +265,25 @@ def main() -> None:
         qdrant = get_qdrant_client()
         docs_count = run_async(qdrant.count_points(DOCS_COLLECTION))
         memory_count = run_async(qdrant.count_points(MEMORY_COLLECTION))
+
+        # Count distinct article_ids by scrolling all points
+        async def _count_articles() -> int:
+            article_ids: set = set()
+            offset = None
+            while True:
+                points, offset = await qdrant.scroll_points(
+                    DOCS_COLLECTION, limit=100, offset=offset
+                )
+                for pt in points:
+                    aid = (pt.payload or {}).get("article_id")
+                    if aid is not None:
+                        article_ids.add(aid)
+                if offset is None:
+                    break
+            return len(article_ids)
+
+        if docs_count > 0:
+            docs_articles = run_async(_count_articles())
     except Exception:
         pass
 
@@ -271,7 +291,7 @@ def main() -> None:
     with c1:
         st.metric("Active Groups", len(groups))
     with c2:
-        st.metric("Knowledge Chunks", f"{docs_count:,}")
+        st.metric("Ingested Articles", f"{docs_articles:,}")
     with c3:
         st.metric("Memory Entries", f"{memory_count:,}")
     with c4:
@@ -304,7 +324,7 @@ def main() -> None:
                 <div class="card-icon">📚</div>
                 <h3>Knowledge Base</h3>
                 <p>Browse Qdrant collections, view vectors, and sync with Zendesk.</p>
-                <div class="card-stat">{docs_count:,} docs &bull; {memory_count:,} memories</div>
+                <div class="card-stat">{docs_articles:,} articles &bull; {docs_count:,} chunks &bull; {memory_count:,} memories</div>
             </div>""",
             unsafe_allow_html=True,
         )
