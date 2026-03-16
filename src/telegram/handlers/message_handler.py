@@ -101,6 +101,15 @@ async def handle_group_message(
         else:
             raise
 
+    # --- Record the bot reply in context so the classifier sees the full conversation ---
+    bot_record = MessageRecord(
+        message_id=0,
+        user_id=0,
+        username="Bot",
+        text=raw_text[:200] if raw_text else "",
+    )
+    await ctx.add_message(bot_record)
+
     logger.bind(**log_ctx).info(
         "Replied category={} language={} escalated={}",
         output.category.value,

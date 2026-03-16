@@ -1,11 +1,11 @@
-.PHONY: help build up down logs restart ingest sync lint test test-unit test-integration qdrant-only dashboard dashboard-local dashboard-logs
+.PHONY: help build up down logs restart ingest sync lint test test-unit test-integration qdrant-only infra dashboard dashboard-local dashboard-logs
 
 help:
 	@echo "Usage: make <target>"
 	@echo ""
 	@echo "Docker (full stack):"
 	@echo "  build          Build the bot Docker image"
-	@echo "  up             Start Qdrant + bot + dashboard (detached)"
+	@echo "  up             Start all services (detached)"
 	@echo "  down           Stop all services"
 	@echo "  down-v         Stop all services and remove volumes"
 	@echo "  logs           Follow bot logs"
@@ -18,8 +18,9 @@ help:
 	@echo "  dashboard-local  Start admin dashboard locally"
 	@echo "  dashboard-logs Follow dashboard logs"
 	@echo ""
-	@echo "Local development (Qdrant only):"
+	@echo "Local development:"
 	@echo "  qdrant-only    Start only Qdrant (for local dev)"
+	@echo "  infra          Start Qdrant + PostgreSQL + Redis (for local dev)"
 	@echo ""
 	@echo "Code quality:"
 	@echo "  lint           Run ruff check + format"
@@ -33,7 +34,7 @@ build:
 	docker compose build
 
 up:
-	docker compose up -d qdrant bot dashboard
+	docker compose up -d qdrant postgres bot dashboard
 
 down:
 	docker compose down
@@ -67,6 +68,9 @@ dashboard-logs:
 # ── Local development ──────────────────────────────────────────────────────────
 
 qdrant-only:
+	docker compose -f docker-compose.qdrant.yml up -d qdrant
+
+infra:
 	docker compose -f docker-compose.qdrant.yml up -d
 
 # ── Code quality ───────────────────────────────────────────────────────────────

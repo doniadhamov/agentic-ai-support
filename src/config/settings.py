@@ -20,12 +20,22 @@ class Settings(BaseSettings):
     # --- Anthropic ---
     anthropic_api_key: str = Field(..., description="Anthropic API key")
     anthropic_model: str = Field(default="claude-sonnet-4-6")
+    anthropic_fast_model: str = Field(
+        default="claude-haiku-4-5",
+        description="Cheaper/faster model for classification and extraction",
+    )
 
     # --- Google Gemini ---
     google_api_key: str = Field(..., description="Google API key for Gemini embeddings")
     gemini_embedding_model: str = Field(default="models/gemini-embedding-2-preview")
     gemini_embedding_dimensions: int = Field(
         default=3072, description="Output dimensionality for embeddings"
+    )
+
+    # --- PostgreSQL (optional — falls back to JSON/in-memory if empty) ---
+    database_url: str = Field(
+        default="",
+        description="PostgreSQL async URL; empty = use JSON file fallback",
     )
 
     # --- Qdrant ---

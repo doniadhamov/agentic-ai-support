@@ -63,6 +63,21 @@ def create_bot() -> tuple[Bot, Dispatcher]:
     return bot, dp
 
 
+async def _init_database() -> None:
+    """Create database tables if PostgreSQL is configured."""
+    settings = get_settings()
+    if not settings.database_url:
+        logger.info("DATABASE_URL not set — using JSON/in-memory fallback")
+        return
+    from src.database.engine import get_engine
+    from src.database.models import Base
+
+    engine = get_engine()
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    logger.info("Database tables ensured ✓")
+
+
 async def run_bot() -> None:
     """Start the bot in long-polling or webhook mode based on settings."""
     from src.escalation.poller import TicketPoller
@@ -70,14 +85,20 @@ async def run_bot() -> None:
     setup_logging()
     settings = get_settings()
 
+    # --- Ensure DB tables exist (no-op if DATABASE_URL is empty) ----------
+    await _init_database()
+
     bot, dp = create_bot()
+
+    # --- Hydrate ticket store from DB if available ------------------------
+    ticket_store = dp["ticket_store"]
+    await ticket_store.init_from_db()
 
     # --- Start the ticket poller as a background task -----------------------
     from src.embeddings.gemini_embedder import GeminiEmbedder
     from src.memory.approved_memory import ApprovedMemory
     from src.vector_db.qdrant_client import get_qdrant_client
 
-    ticket_store = dp["ticket_store"]
     ticket_client = dp["ticket_client"]
     approved_memory = ApprovedMemory(embedder=GeminiEmbedder(), qdrant=get_qdrant_client())
     poller = TicketPoller(
@@ -97,10 +118,25 @@ async def run_bot() -> None:
         )
         logger.info("Zendesk sync scheduled every {} hour(s)", settings.zendesk_sync_interval_hours)
 
+    # --- Start FastAPI health/metrics server as background task ---------------
+    asyncio.create_task(_run_api_server(), name="api_server")
+
     if settings.telegram_webhook_url:
         await _run_webhook(bot, dp, settings.telegram_webhook_url)
     else:
         await _run_polling(bot, dp)
+
+
+async def _run_api_server(port: int = 8000) -> None:
+    """Run the FastAPI health/metrics server in the background."""
+    import uvicorn
+
+    from src.api.app import app as fastapi_app
+
+    config = uvicorn.Config(fastapi_app, host="0.0.0.0", port=port, log_level="warning")
+    server = uvicorn.Server(config)
+    logger.info("FastAPI server starting on :{}", port)
+    await server.serve()
 
 
 async def _run_zendesk_sync(interval_hours: int) -> None:

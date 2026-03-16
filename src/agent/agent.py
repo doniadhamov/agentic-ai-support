@@ -105,8 +105,8 @@ class SupportAgent:
                 language=language,
                 should_reply=True,
                 extracted_question=extraction.extracted_question,
-                answer=generation.follow_up_question or generation.answer,
-                follow_up_question=generation.follow_up_question,
+                answer="",
+                follow_up_question=generation.follow_up_question or generation.answer,
                 needs_retrieval=False,
                 conversation_summary=extraction.conversation_summary,
             )

@@ -46,7 +46,7 @@ class QuestionExtractor:
     def __init__(self, client: anthropic.AsyncAnthropic | None = None) -> None:
         settings = get_settings()
         self._client = client or anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
-        self._model = settings.anthropic_model
+        self._model = settings.anthropic_fast_model
 
     @async_retry()
     async def extract(

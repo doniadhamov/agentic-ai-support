@@ -13,6 +13,9 @@ from src.telegram.context.group_context import GroupContext
 class ContextManager:
     """Thread-safe registry that lazily creates one :class:`GroupContext` per chat.
 
+    When PostgreSQL is configured, newly created contexts are automatically
+    hydrated from the database so conversation history survives bot restarts.
+
     Usage::
 
         manager = ContextManager()
@@ -29,10 +32,12 @@ class ContextManager:
         """Return the existing context for *chat_id* or create a new one."""
         async with self._lock:
             if chat_id not in self._contexts:
-                self._contexts[chat_id] = GroupContext(
+                ctx = GroupContext(
                     chat_id=chat_id,
                     window_size=self._window_size,
                 )
+                await ctx.load_from_db()
+                self._contexts[chat_id] = ctx
                 logger.debug("Created new GroupContext for chat_id={}", chat_id)
             return self._contexts[chat_id]
 

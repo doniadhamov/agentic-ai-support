@@ -3,14 +3,27 @@
 from __future__ import annotations
 
 CLASSIFIER_PROMPT = """\
-Classify the incoming Telegram message and recent conversation context into one of these \
-categories:
-- NON_SUPPORT
-- SUPPORT_QUESTION
-- CLARIFICATION_NEEDED
-- ESCALATION_REQUIRED
+Classify the incoming Telegram message into one of these categories:
+- NON_SUPPORT — no actionable support request in the message
+- SUPPORT_QUESTION — the message itself contains a clear, specific support question
+- CLARIFICATION_NEEDED — the message describes a support issue but lacks enough detail to answer
+- ESCALATION_REQUIRED — repeated failures or explicit request for human help
 
-Also detect the language of the support request (en, ru, or uz).
+CORE RULE:
+Classify based on the CURRENT MESSAGE ONLY. The conversation context is provided so you \
+can understand references (e.g. "it doesn't work" referring to a prior issue), but you must \
+NOT infer or re-trigger a support question from context. If the current message does not \
+contain or clearly describe a specific support problem, it is NON_SUPPORT — regardless of \
+what was discussed before.
+
+NON_SUPPORT includes: greetings, casual chat, thanks, reactions, acknowledgements, \
+intent-to-ask without an actual question, confirmations of a previous answer, off-topic \
+discussion, or any message with no actionable support request.
+
+SUPPORT_QUESTION requires the message to contain a clear product usage question, bug report, \
+troubleshooting request, configuration question, or process/workflow question.
+
+Also detect the language of the message (en, ru, or uz).
 
 Use the produce_output tool to return your classification.
 
@@ -18,58 +31,29 @@ Use the produce_output tool to return your classification.
 
 EXAMPLES:
 
-[English — NON_SUPPORT]
-Message: "Good morning everyone!"
-→ category: NON_SUPPORT, language: en
+[NON_SUPPORT]
+Message: "Good morning everyone!" → NON_SUPPORT, en
+Message: "can i ask" → NON_SUPPORT, en
+Message: "I have another question" → NON_SUPPORT, en
+Message: "this my question)" (after bot already answered) → NON_SUPPORT, en
+Message: "thanks that helped" → NON_SUPPORT, en
+Message: "Всем привет, как дела?" → NON_SUPPORT, ru
+Message: "Assalomu alaykum, hammaga salom!" → NON_SUPPORT, uz
 
-[English — SUPPORT_QUESTION]
-Message: "How do I update a load status to 'Delivered'?"
-→ category: SUPPORT_QUESTION, language: en
+[SUPPORT_QUESTION]
+Message: "How do I update a load status to 'Delivered'?" → SUPPORT_QUESTION, en
+Message: "Как добавить нового водителя в систему?" → SUPPORT_QUESTION, ru
+Message: "Haydovchi parolini qanday tiklash mumkin?" → SUPPORT_QUESTION, uz
 
-[English — CLARIFICATION_NEEDED]
-Message: "It still doesn't work."
-Context: (no prior support conversation visible)
-→ category: CLARIFICATION_NEEDED, language: en
+[CLARIFICATION_NEEDED]
+Message: "It still doesn't work." (no prior context visible) → CLARIFICATION_NEEDED, en
+Message: "Та же проблема, что и раньше." → CLARIFICATION_NEEDED, ru
+Message: "Hali ham ishlamayapti." → CLARIFICATION_NEEDED, uz
 
-[English — ESCALATION_REQUIRED]
-Message: "I've followed all the steps three times but the driver still can't log in."
-→ category: ESCALATION_REQUIRED, language: en
-
----
-
-[Russian — NON_SUPPORT]
-Message: "Всем привет, как дела?"
-→ category: NON_SUPPORT, language: ru
-
-[Russian — SUPPORT_QUESTION]
-Message: "Как добавить нового водителя в систему?"
-→ category: SUPPORT_QUESTION, language: ru
-
-[Russian — CLARIFICATION_NEEDED]
-Message: "Та же проблема, что и раньше."
-→ category: CLARIFICATION_NEEDED, language: ru
-
-[Russian — ESCALATION_REQUIRED]
-Message: "Уже третий раз пробую обновить статус, но изменения не сохраняются."
-→ category: ESCALATION_REQUIRED, language: ru
-
----
-
-[Uzbek — NON_SUPPORT]
-Message: "Assalomu alaykum, hammaga salom!"
-→ category: NON_SUPPORT, language: uz
-
-[Uzbek — SUPPORT_QUESTION]
-Message: "Haydovchi parolini qanday tiklash mumkin?"
-→ category: SUPPORT_QUESTION, language: uz
-
-[Uzbek — CLARIFICATION_NEEDED]
-Message: "Hali ham ishlamayapti."
-→ category: CLARIFICATION_NEEDED, language: uz
-
-[Uzbek — ESCALATION_REQUIRED]
-Message: "Bir necha marta urinib ko'rdim, lekin yuk holati o'zgarmayapti."
-→ category: ESCALATION_REQUIRED, language: uz
+[ESCALATION_REQUIRED]
+Message: "I've followed all the steps three times but the driver still can't log in." → ESCALATION_REQUIRED, en
+Message: "Уже третий раз пробую обновить статус, но изменения не сохраняются." → ESCALATION_REQUIRED, ru
+Message: "Bir necha marta urinib ko'rdim, lekin yuk holati o'zgarmayapti." → ESCALATION_REQUIRED, uz
 
 ---
 

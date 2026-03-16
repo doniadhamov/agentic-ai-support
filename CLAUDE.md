@@ -10,14 +10,17 @@ and escalates unanswerable questions to human support via an external ticket API
 
 - **Python 3.12+** with `uv` package manager
 - **aiogram 3.x** — async Telegram bot framework
-- **Anthropic claude-sonnet-4-6** — classification, extraction, answer generation
+- **Anthropic Claude** — Haiku for classification/extraction (fast + cheap), Sonnet for answer generation (quality)
 - **Google Gemini Embedding 2** (`gemini-embedding-2-preview`) — multimodal embeddings (text + images)
 - **Qdrant** — vector store (`datatruck_docs` + `datatruck_memory` collections, 3072-dim cosine)
+- **PostgreSQL 16** — persistent storage for conversation context and tickets (optional, falls back to JSON)
+- **SQLAlchemy 2.0 (async)** — ORM with asyncpg driver
+- **FastAPI + Uvicorn** — health check / metrics API on port 8000
 - **httpx** — async HTTP client (Zendesk API, ticket API)
 - **pydantic-settings** — typed config from `.env`
 - **loguru** — structured logging
 - **tenacity** — retries on all external calls
-- **Docker Compose** — full stack (Qdrant + bot) or Qdrant-only for local dev
+- **Docker Compose** — full stack (Qdrant + PostgreSQL + bot) or infra-only for local dev
 
 ## Project Layout
 
@@ -31,6 +34,8 @@ src/
   vector_db/      — qdrant_client.py, collections.py, indexer.py
   embeddings/     — gemini_embedder.py
   escalation/     — ticket_client.py, ticket_store.py, poller.py, ticket_schemas.py
+  database/       — engine.py, models.py, repositories.py (PostgreSQL persistence)
+  api/            — app.py (FastAPI health/metrics endpoints)
   memory/         — approved_memory.py, memory_schemas.py
   admin/          — group_store.py, file_ingest.py, schemas.py, dashboard/ (Streamlit admin UI)
   utils/          — logging.py, language.py, retry.py
@@ -42,22 +47,22 @@ tests/            — unit/ + integration/
 
 | File | Purpose |
 |---|---|
-| `docker-compose.yml` | Full stack — Qdrant + ingestion job + bot + admin dashboard |
-| `docker-compose.qdrant.yml` | Qdrant only — for local development (bot runs on host) |
+| `docker-compose.yml` | Full stack — Qdrant + PostgreSQL + ingestion job + bot + admin dashboard |
+| `docker-compose.qdrant.yml` | Qdrant + PostgreSQL — for local development (bot runs on host) |
 
 ## Running Locally (host machine, Qdrant in Docker)
 
 ```bash
 cp .env.example .env        # fill in all API keys
-make qdrant-only            # starts Qdrant on localhost:6333
+make infra                  # starts Qdrant + PostgreSQL
 uv sync                     # install dependencies
 uv run python scripts/ingest_zendesk.py   # initial doc ingestion
-uv run python -m src.telegram.bot         # start bot (long-polling)
+uv run python -m src.telegram.bot         # start bot (long-polling + API on :8000)
 ```
 
 ## Running Fully in Docker
 
-`docker-compose.yml` runs **everything** (Qdrant + ingestion + bot) inside Docker.
+`docker-compose.yml` runs **everything** (Qdrant + PostgreSQL + ingestion + bot) inside Docker.
 
 ### Step 1 — Prepare your `.env`
 
@@ -66,8 +71,8 @@ cp .env.example .env
 # Edit .env and fill in all API keys
 ```
 
-> `QDRANT_URL` in `.env` can stay `http://localhost:6333` — the compose file overrides it
-> to `http://qdrant:6333` (internal Docker network) automatically.
+> `QDRANT_URL` and `DATABASE_URL` in `.env` can stay as localhost values — the compose file
+> overrides them to internal Docker network addresses automatically.
 
 ### Step 2 — Build the image
 
@@ -100,7 +105,7 @@ make logs
 | Target | What it does |
 |---|---|
 | `make build` | Build the bot Docker image |
-| `make up` | Start Qdrant + bot (detached) |
+| `make up` | Start Qdrant + PostgreSQL + bot + dashboard (detached) |
 | `make down` | Stop all services |
 | `make down-v` | Stop all services and wipe volumes |
 | `make ingest` | One-shot Zendesk ingestion |
@@ -108,6 +113,7 @@ make logs
 | `make restart` | Restart bot container |
 | `make logs` | Follow bot logs |
 | `make qdrant-only` | Start Qdrant only (local dev) |
+| `make infra` | Start Qdrant + PostgreSQL (local dev) |
 | `make dashboard` | Start admin dashboard (Docker) |
 | `make dashboard-local` | Start admin dashboard locally |
 | `make dashboard-logs` | Follow dashboard logs |
@@ -118,6 +124,7 @@ make logs
 
 Open Qdrant dashboard: `http://localhost:6333/dashboard`
 Open Admin dashboard: `http://localhost:8501`
+Open API health check: `http://localhost:8000/health`
 
 ## Environment Variables (see .env.example for full list)
 
@@ -125,7 +132,10 @@ Open Admin dashboard: `http://localhost:8501`
 |---|---|
 | `TELEGRAM_BOT_TOKEN` | Bot token from BotFather |
 | `ANTHROPIC_API_KEY` | Anthropic API key |
+| `ANTHROPIC_MODEL` | Sonnet model for answer generation (default: `claude-sonnet-4-6`) |
+| `ANTHROPIC_FAST_MODEL` | Haiku model for classification/extraction (default: `claude-haiku-4-5`) |
 | `GOOGLE_API_KEY` | Google API key for Gemini embeddings |
+| `DATABASE_URL` | PostgreSQL async URL (default: empty = JSON/in-memory fallback) |
 | `QDRANT_URL` | Qdrant URL (default: `http://localhost:6333`) |
 | `ZENDESK_SUBDOMAIN` | Zendesk subdomain (default: `support.datatruck.io`) |
 | `SUPPORT_API_BASE_URL` | External ticket API base URL |
@@ -177,11 +187,12 @@ human support answers escalated ticket
 
 - All Claude calls use the **tool-use pattern** with a single `produce_output` tool whose
   JSON schema matches the output Pydantic model — ensures strict structured output
+- **Model routing**: classifier + extractor use `ANTHROPIC_FAST_MODEL` (Haiku, ~10x cheaper);
+  generator uses `ANTHROPIC_MODEL` (Sonnet) for quality answers
 - Classifier/extractor: `temperature=0.0`
 - Generator: `temperature=0.2`, `max_tokens=4096`
 - Generator returns documentation content verbatim — prompts instruct no rephrasing/summarizing
 - Knowledge sources (titles + URLs) are built from retrieved chunks, not from Claude output
-- Model: `claude-sonnet-4-6` (configurable via `ANTHROPIC_MODEL`)
 
 ## Admin Dashboard
 
@@ -191,12 +202,28 @@ Streamlit-based admin UI at port 8501 with four pages:
 - **Groups** — manage Telegram group allowlist (add/remove, search, runtime changes take effect within 5s)
 - **Knowledge Base** — tabbed browser for `datatruck_docs` / `datatruck_memory`; Delta Sync (24h) and Full Re-ingest buttons; auto-creates collections if missing; paginated point table; delete by UUID
 - **Upload** — ingest PDF/DOCX/TXT/MD files into `datatruck_docs` (parse → chunk → embed → index pipeline)
-- **Tickets** — read-only view of escalated tickets from `data/tickets.json` with status metrics, search, and detail view
+- **Tickets** — read-only view of escalated tickets with status metrics, search, and detail view
 
 Group allowlist is shared between bot and dashboard via `data/allowed_groups.json`.
 When the allowlist is empty, the bot accepts all groups (backward-compatible).
 File upload uses deterministic article IDs (offset from 10,000,000) to avoid collision with Zendesk IDs.
 Full Re-ingest from the dashboard is equivalent to running `scripts/ingest_zendesk.py`.
+
+## PostgreSQL Persistence (optional)
+
+When `DATABASE_URL` is configured, the bot persists:
+- **Conversation messages** — per-group sliding window survives bot restarts (hydrated on startup)
+- **Escalation tickets** — replaces the `data/tickets.json` file store
+
+Tables are auto-created on startup (`Base.metadata.create_all`). No migrations needed for initial setup.
+When `DATABASE_URL` is empty, the bot falls back to the original in-memory + JSON file behavior.
+
+## FastAPI API
+
+The bot runs a FastAPI server on port **8000** alongside the Telegram bot with:
+- `GET /health` — liveness probe (always 200)
+- `GET /health/ready` — readiness probe (checks Qdrant + PostgreSQL connectivity)
+- `GET /metrics` — basic operational metrics (doc/memory point counts, open tickets)
 
 ## Qdrant Collections
 
