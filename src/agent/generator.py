@@ -62,19 +62,49 @@ _TOOL_SCHEMA: dict = {
 
 
 def _format_chunks(chunks: list[RetrievedChunk]) -> str:
-    """Render retrieved chunks as a numbered list for the prompt."""
+    """Render retrieved chunks grouped by article for the prompt.
+
+    Chunks from the same article are merged into a single block so the
+    generator sees complete article content (e.g. all steps of a how-to guide)
+    rather than isolated fragments.
+    """
     if not chunks:
         return "(no relevant documentation found)"
+
+    # Group chunks by (source, article_id or point_id) preserving order
+    from collections import OrderedDict
+
+    groups: OrderedDict[str, list[RetrievedChunk]] = OrderedDict()
+    for chunk in chunks:
+        # Use article_id for docs chunks (to merge siblings), point_id for memory
+        if chunk.source == "docs" and chunk.article_id is not None:
+            key = f"docs_{chunk.article_id}"
+        else:
+            key = f"{chunk.source}_{chunk.point_id}"
+        if key not in groups:
+            groups[key] = []
+        groups[key].append(chunk)
+
     parts: list[str] = []
-    for i, chunk in enumerate(chunks, start=1):
-        source_label = "documentation" if chunk.source == "docs" else "approved memory"
-        title = chunk.article_title or "Untitled"
-        header = f"[{i}] Source: {source_label} | Title: {title} | Score: {chunk.score:.3f}"
-        if chunk.article_url:
-            header += f" | URL: {chunk.article_url}"
-        if chunk.image_url:
-            header += f"\nscreenshot({chunk.image_url})"
-        parts.append(f"{header}\n{chunk.text.strip()}")
+    for i, (_, group) in enumerate(groups.items(), start=1):
+        # Sort by chunk_index within each group for correct document order
+        group.sort(key=lambda c: c.chunk_index)
+        first = group[0]
+        source_label = "documentation" if first.source == "docs" else "approved memory"
+        title = first.article_title or "Untitled"
+        best_score = max(c.score for c in group)
+        header = f"[{i}] Source: {source_label} | Title: {title} | Score: {best_score:.3f}"
+        if first.article_url:
+            header += f" | URL: {first.article_url}"
+
+        # Merge chunk texts and collect image URLs
+        text_parts: list[str] = []
+        for chunk in group:
+            if chunk.image_url:
+                text_parts.append(f"screenshot({chunk.image_url})")
+            text_parts.append(chunk.text.strip())
+
+        parts.append(f"{header}\n" + "\n".join(text_parts))
     return "\n\n".join(parts)
 
 

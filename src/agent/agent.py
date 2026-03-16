@@ -9,6 +9,7 @@ from src.agent.classifier import MessageClassifier
 from src.agent.extractor import QuestionExtractor
 from src.agent.generator import AnswerGenerator
 from src.agent.schemas import AgentInput, AgentOutput, MessageCategory
+from src.config.settings import get_settings
 from src.escalation.ticket_client import TicketAPIClient
 from src.escalation.ticket_schemas import TicketCreate
 from src.escalation.ticket_store import TicketStore
@@ -79,13 +80,35 @@ class SupportAgent:
             "category={} language={}", classification.category.value, classification.language
         )
 
-        # --- Step 2: NON_SUPPORT — nothing to do ------------------------------
+        # --- Step 2: NON_SUPPORT — check RAG before discarding -----------------
         if classification.category == MessageCategory.NON_SUPPORT:
-            return AgentOutput(
-                category=MessageCategory.NON_SUPPORT,
+            # Quick RAG lookup: if the message closely matches documentation,
+            # override to SUPPORT_QUESTION. This catches imperative requests
+            # like "Request SFTP credentials from Chase" that the classifier
+            # may not recognise as support questions.
+            settings = get_settings()
+            probe_chunks = await self._retriever.retrieve(
+                question=agent_input.message_text,
                 language=classification.language,
-                should_reply=False,
+                top_k=3,
             )
+            best_score = max((c.score for c in probe_chunks), default=0.0)
+            if best_score >= settings.rag_override_min_score:
+                logger.bind(**log_ctx).info(
+                    "RAG override: NON_SUPPORT → SUPPORT_QUESTION (best_score={:.3f}, threshold={:.3f})",
+                    best_score,
+                    settings.rag_override_min_score,
+                )
+                classification.category = MessageCategory.SUPPORT_QUESTION
+            else:
+                logger.bind(**log_ctx).debug(
+                    "RAG probe: no override (best_score={:.3f})", best_score
+                )
+                return AgentOutput(
+                    category=MessageCategory.NON_SUPPORT,
+                    language=classification.language,
+                    should_reply=False,
+                )
 
         # --- Step 3: Extract standalone question ------------------------------
         extraction = await self._extractor.extract(

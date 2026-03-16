@@ -56,7 +56,25 @@ class Settings(BaseSettings):
     # --- Agent Behaviour ---
     support_min_confidence_score: float = Field(default=0.75, ge=0.0, le=1.0)
     group_context_window: int = Field(default=20, ge=1, le=100)
+    message_debounce_seconds: float = Field(
+        default=3.0,
+        ge=0.0,
+        le=30.0,
+        description="Base seconds to wait for additional messages from the same user",
+    )
+    message_debounce_max_seconds: float = Field(
+        default=10.0,
+        ge=0.0,
+        le=60.0,
+        description="Maximum total debounce wait when messages look incomplete",
+    )
     rag_top_k: int = Field(default=5, ge=1, le=20)
+    rag_override_min_score: float = Field(
+        default=0.80,
+        ge=0.0,
+        le=1.0,
+        description="Min RAG score to override NON_SUPPORT → SUPPORT_QUESTION",
+    )
     zendesk_sync_interval_hours: int = Field(default=6, ge=0)
 
     # --- Admin Dashboard ---

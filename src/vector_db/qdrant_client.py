@@ -159,6 +159,36 @@ class QdrantWrapper:
         wait=wait_exponential(multiplier=1, min=1, max=10),
         reraise=True,
     )
+    async def scroll_by_filter(
+        self,
+        collection_name: str,
+        scroll_filter: Filter,
+        limit: int = 100,
+    ) -> list[Record]:
+        """Scroll all points matching a filter (no pagination, single batch).
+
+        Args:
+            collection_name: Collection to scroll.
+            scroll_filter: Qdrant :class:`Filter` expression.
+            limit: Maximum number of points to return.
+
+        Returns:
+            List of :class:`Record` matching the filter.
+        """
+        points, _ = await self._client.scroll(
+            collection_name=collection_name,
+            scroll_filter=scroll_filter,
+            limit=limit,
+            with_payload=True,
+            with_vectors=False,
+        )
+        return points
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=10),
+        reraise=True,
+    )
     async def delete_points_by_ids(self, collection_name: str, ids: list[str]) -> None:
         """Delete specific points by their IDs.
 
