@@ -33,12 +33,14 @@ Telegram Group Message
 
 | Module | Purpose |
 |---|---|
-| `src/agent/` | Orchestrator, classifier, extractor, generator, prompts |
+| `src/agent/` | Orchestrator, classifier (Haiku), extractor (Haiku), generator (Sonnet), prompts |
 | `src/rag/` | Query builder, retriever (Qdrant), score-threshold reranker |
 | `src/ingestion/` | Zendesk API client, HTML processor, chunker, sync manager |
 | `src/vector_db/` | Qdrant async wrapper, collection setup, article indexer |
 | `src/embeddings/` | Gemini Embedding 2 (`gemini-embedding-2-preview`) |
-| `src/escalation/` | Ticket API client, ticket store, background poller |
+| `src/escalation/` | Ticket API client, ticket store (PostgreSQL or JSON fallback), background poller |
+| `src/database/` | SQLAlchemy 2.0 async engine, ORM models, repository helpers |
+| `src/api/` | FastAPI health check and metrics endpoints (port 8000) |
 | `src/memory/` | Approved-answer store (resolved Q&A back into Qdrant) |
 | `src/telegram/` | aiogram bot, per-group context manager, message/webhook handlers |
 
@@ -59,12 +61,16 @@ cp .env.example .env
 # Edit .env and fill in all required API keys (see Environment Variables below)
 ```
 
-### 2. Start Qdrant
+### 2. Start infrastructure
 
 ```bash
-docker compose up -d
-# Qdrant is now available at http://localhost:6333
+make infra
+# Qdrant available at http://localhost:6333
+# PostgreSQL available at localhost:5432
 ```
+
+> PostgreSQL is optional — if `DATABASE_URL` is left empty, the bot falls back to
+> in-memory context and JSON file storage for tickets.
 
 ### 3. Install dependencies
 
@@ -91,6 +97,11 @@ uv run python -m src.telegram.bot
 The bot starts in long-polling mode by default. Set `TELEGRAM_WEBHOOK_URL` to switch to
 webhook mode (the server listens on `:8080`).
 
+The FastAPI health/metrics server runs alongside the bot on port **8000**:
+- `GET /health` — liveness probe
+- `GET /health/ready` — readiness probe (checks Qdrant + PostgreSQL)
+- `GET /metrics` — operational metrics (doc/memory counts, open tickets)
+
 ## Environment Variables
 
 | Variable | Required | Default | Description |
@@ -98,6 +109,9 @@ webhook mode (the server listens on `:8080`).
 | `TELEGRAM_BOT_TOKEN` | ✅ | — | Bot token from BotFather |
 | `ANTHROPIC_API_KEY` | ✅ | — | Anthropic API key |
 | `GOOGLE_API_KEY` | ✅ | — | Google API key for Gemini Embedding 2 |
+| `ANTHROPIC_MODEL` | | `claude-sonnet-4-6` | Sonnet model for answer generation |
+| `ANTHROPIC_FAST_MODEL` | | `claude-haiku-4-5` | Haiku model for classification/extraction (~10x cheaper) |
+| `DATABASE_URL` | | `` | PostgreSQL async URL (empty = JSON/in-memory fallback) |
 | `QDRANT_URL` | | `http://localhost:6333` | Qdrant instance URL |
 | `QDRANT_API_KEY` | | `` | Qdrant API key (if using Qdrant Cloud) |
 | `ZENDESK_SUBDOMAIN` | | `support.datatruck.io` | Zendesk subdomain |
@@ -111,7 +125,6 @@ webhook mode (the server listens on `:8080`).
 | `GROUP_CONTEXT_WINDOW` | | `20` | Recent messages to retain per group |
 | `RAG_TOP_K` | | `5` | Number of chunks to retrieve |
 | `ZENDESK_SYNC_INTERVAL_HOURS` | | `6` | Auto-sync interval (0 = disabled) |
-| `ANTHROPIC_MODEL` | | `claude-sonnet-4-6` | Claude model ID |
 | `GEMINI_EMBEDDING_MODEL` | | `models/gemini-embedding-2-preview` | Gemini embedding model |
 | `GEMINI_EMBEDDING_DIMENSIONS` | | `3072` | Embedding output dimensionality |
 | `TELEGRAM_WEBHOOK_URL` | | `` | Webhook base URL (empty = long-polling) |
