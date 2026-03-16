@@ -48,7 +48,7 @@ services:
   dashboard:
     build: .
     container_name: datatruck-dashboard
-    command: uv run streamlit run src/admin/dashboard/app.py --server.port=8501 --server.address=0.0.0.0
+    command: uv run --extra admin streamlit run src/admin/dashboard/app.py --server.port=8501 --server.address=0.0.0.0
     env_file: .env
     environment:
       QDRANT_URL: http://qdrant:6333

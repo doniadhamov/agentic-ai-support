@@ -5,7 +5,7 @@ help:
 	@echo ""
 	@echo "Docker (full stack):"
 	@echo "  build          Build the bot Docker image"
-	@echo "  up             Start Qdrant + bot (detached)"
+	@echo "  up             Start Qdrant + bot + dashboard (detached)"
 	@echo "  down           Stop all services"
 	@echo "  down-v         Stop all services and remove volumes"
 	@echo "  logs           Follow bot logs"
@@ -33,7 +33,7 @@ build:
 	docker compose build
 
 up:
-	docker compose up -d qdrant bot
+	docker compose up -d qdrant bot dashboard
 
 down:
 	docker compose down
