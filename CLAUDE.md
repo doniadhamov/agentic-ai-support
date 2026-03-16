@@ -161,18 +161,23 @@ Open API health check: `http://localhost:8000/health`
 ## Agent Decision Flow
 
 ```
-incoming Telegram group message
+incoming Telegram group message (text, photo, or photo+caption)
   → GroupStore.is_allowed(group_id) — skip if group not in allowlist
-  → GroupContext.add_message()
+  → if photo: download largest photo size via bot.download() (up to 5 MB)
+  → GroupContext.add_message() — records has_image flag, context shows "[sent a photo]"
   → classifier.py  →  NON_SUPPORT | SUPPORT_QUESTION | CLARIFICATION_NEEDED | ESCALATION_REQUIRED
+       (multimodal: image + text sent to Claude Vision if photo present)
   → extractor.py   →  clean standalone question + language
+       (multimodal: describes image content as part of extracted question)
   → retriever.py   →  top-k chunks from datatruck_docs + datatruck_memory
+       (text-only embedding of extracted question; multimodal retrieval not yet wired)
   → reranker.py    →  filter below SUPPORT_MIN_CONFIDENCE_SCORE
   → generator.py   →  grounded answer OR escalation decision
+       (multimodal: sees user's screenshot + retrieved docs for targeted answers)
   → if escalated: ticket_client.create_ticket() + notify user
   → if resolved:  format_reply() → MarkdownV2 conversion + bot.send_message(reply_to=original_message_id)
      - answer returned verbatim from documentation (not rephrased)
-     - screenshot references stripped (image support planned)
+     - screenshot references from docs stripped (image sending planned)
      - "For more information: <article_url>" appended from chunk metadata
      - MarkdownV2 formatting with plain-text fallback on parse errors
 
@@ -189,6 +194,9 @@ human support answers escalated ticket
   JSON schema matches the output Pydantic model — ensures strict structured output
 - **Model routing**: classifier + extractor use `ANTHROPIC_FAST_MODEL` (Haiku, ~10x cheaper);
   generator uses `ANTHROPIC_MODEL` (Sonnet) for quality answers
+- **Multimodal (Vision)**: when a user attaches a photo, all three pipeline stages
+  (classifier, extractor, generator) receive the image as a base64 `image` content block
+  alongside the text prompt — Claude Vision analyzes screenshots, error messages, and UI states
 - Classifier/extractor: `temperature=0.0`
 - Generator: `temperature=0.2`, `max_tokens=4096`
 - Generator returns documentation content verbatim — prompts instruct no rephrasing/summarizing
@@ -241,7 +249,8 @@ Point IDs use deterministic UUID5 from `(article_id, chunk_index)` — re-ingest
   - `## Heading` → `*Heading*` (bold), `**bold**` → `*bold*`, `*italic*` → `_italic_`
   - Code blocks, inline code, links, strikethrough preserved
   - All MarkdownV2 special characters escaped
-- `screenshot(url)` references are stripped (image sending planned for future)
+- `screenshot(url)` references from documentation are stripped (image sending planned for future)
+- User-attached photos are analyzed by Claude Vision but not echoed back in replies
 - Reply includes `For more information: <article_url>` when source is documentation
 - Error handling: formatting errors fall back to raw text; Telegram parse errors retry as plain text
 

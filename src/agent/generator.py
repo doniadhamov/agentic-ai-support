@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 
 import anthropic
@@ -111,6 +112,7 @@ class AnswerGenerator:
         question: str,
         chunks: list[RetrievedChunk],
         language: str = "en",
+        image_data: bytes | None = None,
     ) -> GeneratorResult:
         """Generate an answer for *question* grounded in *chunks*.
 
@@ -118,21 +120,39 @@ class AnswerGenerator:
             question: The clean extracted support question.
             chunks: Retrieved and filtered knowledge chunks (docs + memory).
             language: Language code for the reply.
+            image_data: Optional JPEG bytes of the user-attached screenshot.
 
         Returns:
             :class:`GeneratorResult` with the answer or escalation decision.
         """
         chunks_text = _format_chunks(chunks)
-        user_content = GENERATOR_PROMPT.format(
+        prompt_text = GENERATOR_PROMPT.format(
             chunks=chunks_text,
             question=question,
             language=language,
         )
 
+        # Include the user's screenshot so the generator can see what they see
+        if image_data:
+            user_content: str | list[dict] = [
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "image/jpeg",
+                        "data": base64.standard_b64encode(image_data).decode(),
+                    },
+                },
+                {"type": "text", "text": prompt_text},
+            ]
+        else:
+            user_content = prompt_text
+
         logger.debug(
-            "Generating answer for question (lang={}, {} chunk(s))",
+            "Generating answer for question (lang={}, {} chunk(s), has_image={})",
             language,
             len(chunks),
+            bool(image_data),
         )
 
         response = await self._client.messages.create(

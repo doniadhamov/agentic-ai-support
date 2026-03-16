@@ -31,6 +31,11 @@ class AgentInput(BaseModel):
         default_factory=list,
         description="Recent messages from the same group (oldest first)",
     )
+    image_data: bytes | None = Field(
+        default=None,
+        description="JPEG bytes of the user-attached photo (largest available size)",
+        exclude=True,
+    )
 
 
 class AgentOutput(BaseModel):

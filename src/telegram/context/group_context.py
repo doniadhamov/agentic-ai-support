@@ -19,6 +19,7 @@ class MessageRecord(BaseModel):
     user_id: int
     username: str
     text: str
+    has_image: bool = False
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 
 
@@ -66,7 +67,16 @@ class GroupContext:
     async def get_context_strings(self) -> list[str]:
         """Return recent messages as ``'username: text'`` strings (oldest first)."""
         async with self._lock:
-            return [f"{r.username}: {r.text}" for r in self._window]
+            result: list[str] = []
+            for r in self._window:
+                prefix = f"{r.username}: "
+                if r.has_image and r.text:
+                    result.append(f"{prefix}[sent a photo] {r.text}")
+                elif r.has_image:
+                    result.append(f"{prefix}[sent a photo]")
+                else:
+                    result.append(f"{prefix}{r.text}")
+            return result
 
     async def load_from_db(self) -> None:
         """Hydrate the in-memory window from PostgreSQL on startup."""
@@ -93,7 +103,9 @@ class GroupContext:
                 self.chat_id,
             )
         except Exception as exc:  # noqa: BLE001
-            logger.warning("Failed to hydrate context from DB for chat_id={}: {}", self.chat_id, exc)
+            logger.warning(
+                "Failed to hydrate context from DB for chat_id={}: {}", self.chat_id, exc
+            )
 
     # ------------------------------------------------------------------
     # Ticket tracking

@@ -14,16 +14,39 @@ Tasks to implement later. Separated from the main improvement backlog.
 
 ---
 
-## Group B — Telegram Image Sending
+## Group B — Image Support
+
+### B-I. Incoming Image Analysis (✅ Done)
+
+User-sent photos (with or without captions) are now analyzed through the full agent pipeline:
 
 | # | Task | File(s) | Status |
 |---|------|---------|--------|
-| B.1 | Design image delivery: extract image URLs from chunks, send as Telegram photo after text reply | — | ⬜ |
-| B.2 | Update `AgentOutput` or `GeneratorResult` to carry image URLs for the reply | `src/agent/schemas.py` | ⬜ |
-| B.3 | Update generator to preserve image references (currently stripped) and pass them through | `src/agent/generator.py`, `src/agent/prompts/generator_prompt.py` | ⬜ |
-| B.4 | Implement image sending in message handler — `bot.send_photo()` after text reply | `src/telegram/handlers/message_handler.py` | ⬜ |
-| B.5 | Update formatter to strip screenshot markers from text but return image URLs separately | `src/telegram/formatter.py` | ⬜ |
-| B.6 | Unit + integration test for image delivery flow | `tests/unit/test_message_handler.py` | ⬜ |
+| B-I.1 | Accept photo messages in handler, download image bytes (up to 5 MB) | `src/telegram/handlers/message_handler.py` | ✅ |
+| B-I.2 | Add `image_data: bytes \| None` to `AgentInput`, `has_image: bool` to `MessageRecord` | `src/agent/schemas.py`, `src/telegram/context/group_context.py` | ✅ |
+| B-I.3 | Pass image as base64 content block to classifier (Claude Haiku Vision) | `src/agent/classifier.py` | ✅ |
+| B-I.4 | Pass image as base64 content block to extractor (Claude Haiku Vision) | `src/agent/extractor.py` | ✅ |
+| B-I.5 | Pass image as base64 content block to generator (Claude Sonnet Vision) | `src/agent/generator.py` | ✅ |
+| B-I.6 | Thread `image_data` through `agent.process()` to all pipeline stages | `src/agent/agent.py` | ✅ |
+| B-I.7 | Update classifier prompt — screenshots showing errors count as SUPPORT_QUESTION | `src/agent/prompts/classifier_prompt.py` | ✅ |
+| B-I.8 | Update extractor prompt — describe image content in extracted question | `src/agent/prompts/extractor_prompt.py` | ✅ |
+| B-I.9 | Update generator prompt — reference user's screenshot in answer | `src/agent/prompts/generator_prompt.py` | ✅ |
+| B-I.10 | Context strings show `[sent a photo]` for image messages | `src/telegram/context/group_context.py` | ✅ |
+
+**Note:** Retrieval uses text-only embedding of the extracted question. The `embed_multimodal()` method exists in `GeminiEmbedder` but is not yet wired for query-time image embedding.
+
+### B-II. Outgoing Image Sending (Deferred)
+
+Sending documentation screenshots back to users as Telegram photos:
+
+| # | Task | File(s) | Status |
+|---|------|---------|--------|
+| B-II.1 | Design image delivery: extract image URLs from chunks, send as Telegram photo after text reply | — | ⬜ |
+| B-II.2 | Update `AgentOutput` or `GeneratorResult` to carry image URLs for the reply | `src/agent/schemas.py` | ⬜ |
+| B-II.3 | Update generator to preserve image references (currently stripped) and pass them through | `src/agent/generator.py`, `src/agent/prompts/generator_prompt.py` | ⬜ |
+| B-II.4 | Implement image sending in message handler — `bot.send_photo()` after text reply | `src/telegram/handlers/message_handler.py` | ⬜ |
+| B-II.5 | Update formatter to strip screenshot markers from text but return image URLs separately | `src/telegram/formatter.py` | ⬜ |
+| B-II.6 | Unit + integration test for image delivery flow | `tests/unit/test_message_handler.py` | ⬜ |
 
 ---
 

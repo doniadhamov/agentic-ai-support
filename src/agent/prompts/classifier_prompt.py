@@ -16,12 +16,18 @@ NOT infer or re-trigger a support question from context. If the current message 
 contain or clearly describe a specific support problem, it is NON_SUPPORT — regardless of \
 what was discussed before.
 
+IMAGES: The message may include a photo or screenshot. Treat the image as part of the message \
+content. A screenshot showing an error, a UI problem, or a configuration issue counts as a \
+support question even if the text is minimal or absent (e.g. just "help" + screenshot of an error). \
+A photo with no text and no visible product-related content is NON_SUPPORT.
+
 NON_SUPPORT includes: greetings, casual chat, thanks, reactions, acknowledgements, \
 intent-to-ask without an actual question, confirmations of a previous answer, off-topic \
 discussion, or any message with no actionable support request.
 
 SUPPORT_QUESTION requires the message to contain a clear product usage question, bug report, \
-troubleshooting request, configuration question, or process/workflow question.
+troubleshooting request, configuration question, or process/workflow question — via text, \
+image, or both.
 
 Also detect the language of the message (en, ru, or uz).
 

@@ -15,6 +15,10 @@ Rules for the extracted question:
 - Do not merge unrelated issues from different users.
 - Write the question as a clear, specific, standalone support question.
 - Keep it in the same language as the user's support request.
+- If the message includes a photo or screenshot, describe what the image shows as part of \
+the extracted question (e.g. "The user sees an error message '...' on the ... screen" or \
+"The user's screenshot shows ..."). This ensures the question is self-contained even \
+without the image.
 
 Use the produce_output tool to return your result.
 """

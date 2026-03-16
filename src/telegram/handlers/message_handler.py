@@ -16,6 +16,9 @@ from src.telegram.formatter import format_reply
 
 router = Router(name="group_messages")
 
+# Maximum photo file size we're willing to download (5 MB)
+_MAX_PHOTO_BYTES = 5 * 1024 * 1024
+
 
 @router.message(F.chat.type.in_({"group", "supergroup"}))
 async def handle_group_message(
@@ -25,12 +28,22 @@ async def handle_group_message(
 ) -> None:
     """Process a single group message through the full agent pipeline.
 
+    Handles both text-only messages and photo messages (with or without captions).
+
     Args:
         message: Incoming aiogram Message object.
         agent: Injected :class:`SupportAgent` instance.
         context_manager: Injected :class:`ContextManager` singleton.
     """
-    if not message.text or not message.from_user:
+    if not message.from_user:
+        return
+
+    # Determine text content: regular text or photo caption
+    message_text: str = message.text or message.caption or ""
+    has_photo: bool = bool(message.photo)
+
+    # Skip messages with no text AND no photo
+    if not message_text and not has_photo:
         return
 
     chat_id: int = message.chat.id
@@ -49,13 +62,34 @@ async def handle_group_message(
         "message_id": message_id,
     }
 
+    # --- Download photo bytes if present --------------------------------------
+    image_data: bytes | None = None
+    if has_photo:
+        try:
+            # message.photo is sorted by size; pick the largest available
+            photo = message.photo[-1]
+            if photo.file_size and photo.file_size > _MAX_PHOTO_BYTES:
+                logger.bind(**log_ctx).warning(
+                    "Photo too large ({} bytes), skipping image", photo.file_size
+                )
+            else:
+                from io import BytesIO
+
+                buf = BytesIO()
+                await message.bot.download(photo, destination=buf)
+                image_data = buf.getvalue()
+                logger.bind(**log_ctx).debug("Downloaded photo ({} bytes)", len(image_data))
+        except Exception as exc:  # noqa: BLE001
+            logger.bind(**log_ctx).warning("Failed to download photo: {}", exc)
+
     # --- 1. Record the incoming message in the group context ----------------
     ctx = await context_manager.get_or_create(chat_id)
     record = MessageRecord(
         message_id=message_id,
         user_id=user_id,
         username=username,
-        text=message.text,
+        text=message_text,
+        has_image=has_photo,
     )
     await ctx.add_message(record)
 
@@ -66,14 +100,15 @@ async def handle_group_message(
 
     # --- 3. Build AgentInput and run the agent ------------------------------
     agent_input = AgentInput(
-        message_text=message.text,
+        message_text=message_text,
         user_id=user_id,
         group_id=chat_id,
         message_id=message_id,
         conversation_context=conversation_context,
+        image_data=image_data,
     )
 
-    logger.bind(**log_ctx).debug("Dispatching to SupportAgent")
+    logger.bind(**log_ctx).debug("Dispatching to SupportAgent (has_image={})", has_photo)
     output = await agent.process(agent_input)
 
     # --- 4. Reply if the agent decided to respond ---------------------------

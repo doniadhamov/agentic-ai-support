@@ -71,6 +71,7 @@ class SupportAgent:
         classification = await self._classifier.classify(
             message_text=agent_input.message_text,
             conversation_context=agent_input.conversation_context,
+            image_data=agent_input.image_data,
         )
         log_ctx["category"] = classification.category.value
         log_ctx["language"] = classification.language
@@ -90,6 +91,7 @@ class SupportAgent:
         extraction = await self._extractor.extract(
             message_text=agent_input.message_text,
             conversation_context=agent_input.conversation_context,
+            image_data=agent_input.image_data,
         )
         language = extraction.language
 
@@ -99,6 +101,7 @@ class SupportAgent:
                 question=extraction.extracted_question,
                 chunks=[],
                 language=language,
+                image_data=agent_input.image_data,
             )
             return AgentOutput(
                 category=MessageCategory.CLARIFICATION_NEEDED,
@@ -129,6 +132,7 @@ class SupportAgent:
             question=extraction.extracted_question,
             chunks=filtered_chunks,
             language=language,
+            image_data=agent_input.image_data,
         )
 
         # Determine final category: generator may override to ESCALATION_REQUIRED

@@ -7,14 +7,17 @@ human agents via an external ticket API.
 ## Architecture Overview
 
 ```
-Telegram Group Message
+Telegram Group Message (text / photo / photo+caption)
+        │
+        ├── if photo: download image bytes (up to 5 MB)
         │
         ▼
   MessageClassifier  ──── NON_SUPPORT ──► (ignore)
-  (Claude tool-use)  ──── CLARIFICATION_NEEDED ──► ask follow-up
-        │
+  (Claude Vision)    ──── CLARIFICATION_NEEDED ──► ask follow-up
+        │                  (sees image + text)
         ▼ SUPPORT_QUESTION / ESCALATION_REQUIRED
-  QuestionExtractor  (clean standalone question + language)
+  QuestionExtractor  (clean standalone question + language; describes image content)
+  (Claude Vision)
         │
         ▼
   RAGRetriever  ──► datatruck_docs  (Zendesk articles)
@@ -25,15 +28,16 @@ Telegram Group Message
         │
         ▼
   AnswerGenerator  ──► grounded answer  ──► format_reply() ──► Telegram
-  (Claude tool-use) ──► needs_escalation ──► TicketAPIClient ──► human agent
-                                             TicketPoller polls for resolution
+  (Claude Vision)  ──► needs_escalation ──► TicketAPIClient ──► human agent
+  (sees screenshot       TicketPoller polls for resolution
+   + retrieved docs)
 ```
 
 ### Key Components
 
 | Module | Purpose |
 |---|---|
-| `src/agent/` | Orchestrator, classifier (Haiku), extractor (Haiku), generator (Sonnet), prompts |
+| `src/agent/` | Orchestrator, classifier (Haiku Vision), extractor (Haiku Vision), generator (Sonnet Vision), prompts |
 | `src/rag/` | Query builder, retriever (Qdrant), score-threshold reranker |
 | `src/ingestion/` | Zendesk API client, HTML processor, chunker, sync manager |
 | `src/vector_db/` | Qdrant async wrapper, collection setup, article indexer |
@@ -42,7 +46,7 @@ Telegram Group Message
 | `src/database/` | SQLAlchemy 2.0 async engine, ORM models, repository helpers |
 | `src/api/` | FastAPI health check and metrics endpoints (port 8000) |
 | `src/memory/` | Approved-answer store (resolved Q&A back into Qdrant) |
-| `src/telegram/` | aiogram bot, per-group context manager, message/webhook handlers |
+| `src/telegram/` | aiogram bot, per-group context manager, message/webhook handlers (text + photo) |
 
 ## Quickstart
 

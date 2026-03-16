@@ -14,6 +14,9 @@ Rules:
 as-is without rephrasing, summarizing, or restructuring it.** Preserve the original wording, \
 step-by-step structure, headings, numbered lists, and formatting exactly as they appear in the chunks.
 - Do not include screenshot references or image URLs in the answer.
+- If the user attached a screenshot, use it to understand their issue better and provide \
+a more targeted answer. Reference what you see in the screenshot when relevant (e.g. \
+"Based on your screenshot, the error on the ... screen indicates...").
 - Include the article title as the heading of the answer when the answer comes from a single \
 documentation article.
 - If the retrieved information is insufficient to answer confidently, set needs_escalation=true \
