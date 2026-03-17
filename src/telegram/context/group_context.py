@@ -20,6 +20,8 @@ class MessageRecord(BaseModel):
     username: str
     text: str
     has_image: bool = False
+    has_voice: bool = False
+    media_description: str = ""
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 
 
@@ -70,12 +72,14 @@ class GroupContext:
             result: list[str] = []
             for r in self._window:
                 prefix = f"{r.username}: "
-                if r.has_image and r.text:
-                    result.append(f"{prefix}[sent a photo] {r.text}")
+                parts: list[str] = []
+                if r.media_description:
+                    parts.append(r.media_description)
                 elif r.has_image:
-                    result.append(f"{prefix}[sent a photo]")
-                else:
-                    result.append(f"{prefix}{r.text}")
+                    parts.append("[sent a photo]")
+                if r.text:
+                    parts.append(r.text)
+                result.append(prefix + " ".join(parts) if parts else f"{prefix}(empty)")
             return result
 
     async def load_from_db(self) -> None:

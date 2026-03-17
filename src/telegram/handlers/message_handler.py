@@ -26,14 +26,15 @@ from src.config.settings import get_settings
 from src.telegram.context.context_manager import ContextManager
 from src.telegram.context.group_context import MessageRecord
 from src.telegram.formatter import format_reply
+from src.telegram.preprocessor import PreprocessedMessage, preprocess
 
 router = Router(name="group_messages")
 
-# Maximum photo file size we're willing to download (5 MB)
-_MAX_PHOTO_BYTES = 5 * 1024 * 1024
-
 # Shared completeness checker (lazy-initialised on first use)
 _checker: CompletenessChecker | None = None
+
+# Maximum images to include in a single agent call
+_MAX_IMAGES_PER_BATCH = 5
 
 
 def _get_checker() -> CompletenessChecker:
@@ -41,6 +42,22 @@ def _get_checker() -> CompletenessChecker:
     if _checker is None:
         _checker = CompletenessChecker()
     return _checker
+
+
+def _has_supported_content(message: Message) -> bool:
+    """Return True if the message contains content we can process."""
+    return bool(
+        message.text
+        or message.caption
+        or message.photo
+        or message.voice
+        or message.audio
+        or (
+            message.document
+            and message.document.mime_type
+            and message.document.mime_type.startswith("image/")
+        )
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -53,7 +70,7 @@ class _PendingBatch:
     """Holds buffered messages for a single (group, user) pair."""
 
     messages: list[Message] = field(default_factory=list)
-    image_data_list: list[bytes | None] = field(default_factory=list)
+    preprocessed: list[PreprocessedMessage] = field(default_factory=list)
     timer: asyncio.Task[None] | None = None
     first_message_time: float = field(default_factory=time.monotonic)
 
@@ -61,29 +78,6 @@ class _PendingBatch:
 # key = (chat_id, user_id)
 _pending: dict[tuple[int, int], _PendingBatch] = {}
 _pending_lock = asyncio.Lock()
-
-
-async def _download_photo(message: Message, log_ctx: dict) -> bytes | None:
-    """Download the largest photo from a message, if present."""
-    if not message.photo:
-        return None
-    try:
-        photo = message.photo[-1]
-        if photo.file_size and photo.file_size > _MAX_PHOTO_BYTES:
-            logger.bind(**log_ctx).warning(
-                "Photo too large ({} bytes), skipping image", photo.file_size
-            )
-            return None
-        from io import BytesIO
-
-        buf = BytesIO()
-        await message.bot.download(photo, destination=buf)
-        data = buf.getvalue()
-        logger.bind(**log_ctx).debug("Downloaded photo ({} bytes)", len(data))
-        return data
-    except Exception as exc:  # noqa: BLE001
-        logger.bind(**log_ctx).warning("Failed to download photo: {}", exc)
-        return None
 
 
 async def _debounce_then_process(
@@ -119,15 +113,17 @@ async def _debounce_then_process(
             break
 
         # Collect texts for the completeness check
-        texts = [m.text or m.caption or "" for m in batch.messages]
-        has_bare_photo = any(
-            bool(m.photo) and not (m.text or m.caption or "").strip()
-            for m in batch.messages
-        )
+        texts = [pp.text for pp in batch.preprocessed]
+        has_bare_photo = any(pp.has_image and not pp.text.strip() for pp in batch.preprocessed)
+        has_voice = any(pp.has_voice for pp in batch.preprocessed)
 
         try:
             checker = _get_checker()
-            complete = await checker.is_complete(texts, has_photo_without_text=has_bare_photo)
+            complete = await checker.is_complete(
+                texts,
+                has_photo_without_text=has_bare_photo,
+                has_voice=has_voice,
+            )
         except Exception:  # noqa: BLE001
             logger.debug("Completeness check failed, treating as complete")
             break
@@ -162,14 +158,12 @@ async def _process_batch(
 
     chat_id, user_id = key
     messages = batch.messages
-    image_data_list = batch.image_data_list
+    preprocessed_list = batch.preprocessed
 
     # Use the last message for replying (the most recent one)
     last_message = messages[-1]
     first_message = messages[0]
-    username: str = (
-        first_message.from_user.full_name if first_message.from_user else str(user_id)
-    )
+    username: str = first_message.from_user.full_name if first_message.from_user else str(user_id)
 
     log_ctx = {
         "group_id": chat_id,
@@ -180,33 +174,35 @@ async def _process_batch(
 
     # --- Record all messages in group context --------------------------------
     ctx = await context_manager.get_or_create(chat_id)
-    for msg, _img in zip(messages, image_data_list, strict=True):
-        msg_text = msg.text or msg.caption or ""
+    for msg, pp in zip(messages, preprocessed_list, strict=True):
         record = MessageRecord(
             message_id=msg.message_id,
             user_id=user_id,
             username=username,
-            text=msg_text,
-            has_image=bool(msg.photo),
+            text=pp.text or msg.text or msg.caption or "",
+            has_image=pp.has_image,
+            has_voice=pp.has_voice,
+            media_description=pp.media_description,
         )
         await ctx.add_message(record)
 
-    # --- Combine message texts into a single input ---------------------------
+    # --- Combine preprocessed results into a single input --------------------
     texts: list[str] = []
-    for msg in messages:
-        t = msg.text or msg.caption or ""
-        if t:
-            texts.append(t)
+    all_images: list[bytes] = []
+
+    for pp in preprocessed_list:
+        if pp.text:
+            texts.append(pp.text)
+        all_images.extend(pp.images)
+
     combined_text = "\n".join(texts)
 
-    # Pick the last available image (most relevant / most recent)
-    image_data: bytes | None = None
-    for img in reversed(image_data_list):
-        if img:
-            image_data = img
-            break
-
-    has_any_photo = any(bool(msg.photo) for msg in messages)
+    # Cap images to avoid excessive API costs
+    if len(all_images) > _MAX_IMAGES_PER_BATCH:
+        logger.bind(**log_ctx).warning(
+            "Batch has {} images, capping to {}", len(all_images), _MAX_IMAGES_PER_BATCH
+        )
+        all_images = all_images[:_MAX_IMAGES_PER_BATCH]
 
     # --- Build conversation context strings for the agent --------------------
     context_strings = await ctx.get_context_strings()
@@ -223,13 +219,14 @@ async def _process_batch(
         group_id=chat_id,
         message_id=last_message.message_id,
         conversation_context=conversation_context,
-        image_data=image_data,
+        images=all_images,
     )
 
     logger.bind(**log_ctx).debug(
-        "Dispatching batch of {} message(s) to SupportAgent (has_image={})",
+        "Dispatching batch of {} message(s) to SupportAgent (images={}, has_voice={})",
         len(messages),
-        has_any_photo,
+        len(all_images),
+        any(pp.has_voice for pp in preprocessed_list),
     )
     output = await agent.process(agent_input)
 
@@ -243,9 +240,7 @@ async def _process_batch(
     try:
         reply_text = format_reply(output)
     except Exception as exc:  # noqa: BLE001
-        logger.bind(**log_ctx).error(
-            "Failed to format reply, falling back to raw text: {}", exc
-        )
+        logger.bind(**log_ctx).error("Failed to format reply, falling back to raw text: {}", exc)
         reply_text = raw_text
 
     # --- Send the reply to the last message in the batch --------------------
@@ -294,10 +289,8 @@ async def handle_group_message(
     if not message.from_user:
         return
 
-    message_text: str = message.text or message.caption or ""
-    has_photo: bool = bool(message.photo)
-
-    if not message_text and not has_photo:
+    # Skip messages with no supported content (stickers, service messages, etc.)
+    if not _has_supported_content(message):
         return
 
     chat_id: int = message.chat.id
@@ -310,15 +303,18 @@ async def handle_group_message(
     user_id: int = message.from_user.id
     log_ctx = {"group_id": chat_id, "user_id": user_id, "message_id": message.message_id}
 
-    # --- Download photo bytes if present --------------------------------------
-    image_data = await _download_photo(message, log_ctx)
+    # --- Preprocess message (download media, transcribe voice, etc.) ----------
+    pp = await preprocess(message, message.bot)
+    if not pp.is_supported:
+        logger.bind(**log_ctx).debug("Unsupported or failed preprocessing, skipping")
+        return
 
     base_delay = get_settings().message_debounce_seconds
 
     # --- If debounce is disabled (0), process immediately ---------------------
     if base_delay <= 0:
         key = (chat_id, user_id)
-        batch = _PendingBatch(messages=[message], image_data_list=[image_data])
+        batch = _PendingBatch(messages=[message], preprocessed=[pp])
         async with _pending_lock:
             _pending[key] = batch
         await _process_batch(key, agent, context_manager)
@@ -334,16 +330,14 @@ async def handle_group_message(
             _pending[key] = batch
 
         batch.messages.append(message)
-        batch.image_data_list.append(image_data)
+        batch.preprocessed.append(pp)
 
         # Cancel existing timer — the new _debounce_then_process task handles
         # both the silence wait and the semantic completeness loop.
         if batch.timer is not None and not batch.timer.done():
             batch.timer.cancel()
 
-        batch.timer = asyncio.create_task(
-            _debounce_then_process(key, agent, context_manager)
-        )
+        batch.timer = asyncio.create_task(_debounce_then_process(key, agent, context_manager))
 
     logger.bind(**log_ctx).debug(
         "Buffered message (batch size now {}), debounce in {:.1f}s",

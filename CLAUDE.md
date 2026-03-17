@@ -27,7 +27,7 @@ and escalates unanswerable questions to human support via an external ticket API
 ```
 src/
   config/         — settings.py (all env vars as pydantic BaseSettings, get_settings())
-  telegram/       — bot.py, handlers/, formatter.py, context/ (per-group sliding window + asyncio Lock)
+  telegram/       — bot.py, handlers/, formatter.py, preprocessor.py, context/ (per-group sliding window + asyncio Lock)
   agent/          — agent.py (orchestrator), classifier, extractor, generator, prompts/, schemas.py
   rag/            — retriever.py, reranker.py, query_builder.py
   ingestion/      — zendesk_client.py, article_processor.py, image_downloader.py, chunker.py, sync_manager.py, file_parser.py
@@ -142,7 +142,10 @@ Open API health check: `http://localhost:8000/health`
 | `SUPPORT_API_KEY` | External ticket API key |
 | `GEMINI_EMBEDDING_MODEL` | Gemini embedding model (default: `models/gemini-embedding-2-preview`) |
 | `GEMINI_EMBEDDING_DIMENSIONS` | Embedding output dimensions (default: `3072`) |
+| `GEMINI_FLASH_MODEL` | Gemini Flash model for voice transcription (default: `gemini-2.0-flash`) |
+| `MAX_VOICE_DURATION_SECONDS` | Max voice message duration to transcribe (default: `120`) |
 | `SUPPORT_MIN_CONFIDENCE_SCORE` | Min Qdrant score to accept chunk (default: `0.75`) |
+| `RAG_OVERRIDE_MIN_SCORE` | Min RAG score to override NON_SUPPORT → SUPPORT_QUESTION (default: `0.80`) |
 | `GROUP_CONTEXT_WINDOW` | Recent messages to keep per group (default: `20`) |
 | `TICKET_POLL_INTERVAL_SECONDS` | Ticket polling interval (default: `60`) |
 | `ADMIN_PASSWORD` | Admin dashboard password (default: empty = no auth) |
@@ -161,19 +164,29 @@ Open API health check: `http://localhost:8000/health`
 ## Agent Decision Flow
 
 ```
-incoming Telegram group message (text, photo, or photo+caption)
+incoming Telegram group message (text, photo, voice, audio, or image document)
   → GroupStore.is_allowed(group_id) — skip if group not in allowlist
-  → if photo: download largest photo size via bot.download() (up to 5 MB)
-  → GroupContext.add_message() — records has_image flag, context shows "[sent a photo]"
-  → classifier.py  →  NON_SUPPORT | SUPPORT_QUESTION | CLARIFICATION_NEEDED | ESCALATION_REQUIRED
-       (multimodal: image + text sent to Claude Vision if photo present)
-  → extractor.py   →  clean standalone question + language
-       (multimodal: describes image content as part of extracted question)
+  → preprocessor.py — normalize message:
+       text → as-is
+       photo → download largest size (up to 5 MB) → images list
+       voice/audio → download → transcribe via Gemini Flash → text
+       document(image/*) → download → images list
+  → debounce batching — combine consecutive messages from same user
+  → GroupContext.add_message() — records has_image, has_voice, media_description
+  → RAG probe (embed message text + Qdrant top-3) — fast & cheap, no Claude API call
+       skip if text is too short (<5 chars, e.g. photo-only)
+       if best score ≥ RAG_OVERRIDE_MIN_SCORE → fast-path as SUPPORT_QUESTION (skip classifier)
+       if no strong match → classifier.py (Claude Haiku Vision):
+         NON_SUPPORT → ignore (no further API calls)
+         CLARIFICATION_NEEDED → ask follow-up
+         ESCALATION_REQUIRED / SUPPORT_QUESTION → continue pipeline
+  → extractor.py   →  extracted information + language (NOT necessarily a question)
+       (multimodal: describes image content, transcribed voice, combined with text + conversation history)
   → retriever.py   →  top-k chunks from datatruck_docs + datatruck_memory
-       (text-only embedding of extracted question; multimodal retrieval not yet wired)
+       (text embedding of extracted information from extractor output)
   → reranker.py    →  filter below SUPPORT_MIN_CONFIDENCE_SCORE
   → generator.py   →  grounded answer OR escalation decision
-       (multimodal: sees user's screenshot + retrieved docs for targeted answers)
+       (multimodal: sees user's images + retrieved docs + conversation history)
   → if escalated: ticket_client.create_ticket() + notify user
   → if resolved:  format_reply() → MarkdownV2 conversion + bot.send_message(reply_to=original_message_id)
      - answer returned verbatim from documentation (not rephrased)

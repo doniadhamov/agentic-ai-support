@@ -22,6 +22,7 @@ to send more messages to complete it.
 Signs the message is INCOMPLETE (more is coming):
 - The text ends mid-sentence or trails off
 - A photo was sent without any explanation — the user may be about to describe it
+- A file was sent without explanation — the user may be about to describe it
 - The message is a short fragment that doesn't stand on its own
 - The text explicitly says "wait", "one moment", "hold on", "сейчас", "кутинг" etc.
 - The user seems to be typing a list and hasn't finished
@@ -30,6 +31,7 @@ Signs the message is INCOMPLETE (more is coming):
 Signs the message is COMPLETE (ready to process):
 - The text forms a coherent question or statement
 - A photo was sent with a clear caption/question
+- A voice message was sent — it typically contains the user's full thought
 - The user is greeting or thanking — no more expected
 - The text ends with a question mark, period, or clear conclusion
 - Multiple messages together already form a full thought
@@ -55,13 +57,19 @@ class CompletenessChecker:
         self,
         message_texts: list[str],
         has_photo_without_text: bool = False,
+        has_voice: bool = False,
     ) -> bool:
         """Return *True* if the buffered messages look like a complete thought.
 
         Args:
             message_texts: Text of each buffered message (oldest first).
             has_photo_without_text: Whether the batch includes a photo with no caption.
+            has_voice: Whether the batch includes a voice/audio message.
         """
+        # Voice messages are typically complete thoughts
+        if has_voice and any(t.strip() for t in message_texts):
+            return True
+
         parts: list[str] = []
         for i, text in enumerate(message_texts, 1):
             parts.append(f"{i}. {text}" if text else f"{i}. [photo without text]")

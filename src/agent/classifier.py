@@ -61,14 +61,14 @@ class MessageClassifier:
         self,
         message_text: str,
         conversation_context: list[str] | None = None,
-        image_data: bytes | None = None,
+        images: list[bytes] | None = None,
     ) -> ClassifierResult:
-        """Classify *message_text* with optional conversation context and image.
+        """Classify *message_text* with optional conversation context and images.
 
         Args:
             message_text: The raw incoming Telegram message.
             conversation_context: Recent prior messages from the same group.
-            image_data: Optional JPEG bytes of an attached photo.
+            images: Optional list of image byte arrays (photos, image documents).
 
         Returns:
             :class:`ClassifierResult` with category, language, confidence, and reasoning.
@@ -78,26 +78,27 @@ class MessageClassifier:
             formatted = "\n".join(f"- {m}" for m in conversation_context[-10:])
             context_block = f"\nRECENT CONTEXT:\n{formatted}\n"
 
-        prompt_text = f"{CLASSIFIER_PROMPT}{context_block}\nMESSAGE:\n{message_text or '(no text — see attached image)'}"
+        prompt_text = f"{CLASSIFIER_PROMPT}{context_block}\nMESSAGE:\n{message_text or '(no text — see attached image(s))'}"
 
-        # Build multimodal content blocks when an image is attached
-        if image_data:
+        # Build multimodal content blocks when images are attached
+        if images:
             user_content: str | list[dict] = [
                 {
                     "type": "image",
                     "source": {
                         "type": "base64",
                         "media_type": "image/jpeg",
-                        "data": base64.standard_b64encode(image_data).decode(),
+                        "data": base64.standard_b64encode(img).decode(),
                     },
-                },
-                {"type": "text", "text": prompt_text},
+                }
+                for img in images
             ]
+            user_content.append({"type": "text", "text": prompt_text})
         else:
             user_content = prompt_text
 
         logger.debug(
-            "Classifying message (len={}, has_image={})", len(message_text or ""), bool(image_data)
+            "Classifying message (len={}, images={})", len(message_text or ""), len(images or [])
         )
 
         response = await self._client.messages.create(

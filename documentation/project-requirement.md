@@ -223,18 +223,20 @@ Never:
 
 For every incoming Telegram event, follow this order:
 
-- Step 1: Read the latest message and relevant recent group context.
-- Step 2: Decide whether it is NON_SUPPORT, SUPPORT_QUESTION, CLARIFICATION_NEEDED, or ESCALATION_REQUIRED.
-- Step 3: If NON_SUPPORT, do nothing.
-- Step 4: If SUPPORT_QUESTION, extract the clean standalone question.
-- Step 5: Retrieve relevant official docs and approved memory.
-- Step 6: Evaluate whether the answer is grounded and sufficient.
-- Step 7:
+- Step 1: Preprocess the message — normalize any supported type (text, photo, voice/audio, image document) into text + images. Voice messages are transcribed via Gemini Flash.
+- Step 2: Read recent group context (conversation history is always analyzed alongside the current message).
+- Step 3: RAG probe — embed the message text and search Qdrant (top-3 chunks). Skip if text is too short (<5 chars, e.g. photo-only). Fast and cheap (no Claude API call).
+- Step 4: If RAG probe finds a strong match (best score ≥ RAG_OVERRIDE_MIN_SCORE), fast-path as SUPPORT_QUESTION — skip the classifier entirely.
+- Step 5: If no strong RAG match, run the classifier (Claude Haiku Vision, sees text + images + conversation history) to decide NON_SUPPORT, SUPPORT_QUESTION, CLARIFICATION_NEEDED, or ESCALATION_REQUIRED. If NON_SUPPORT, do nothing (no further API calls).
+- Step 6: Extract information from the message (NOT necessarily a question — could describe an image, transcribe voice context, etc.).
+- Step 7: Retrieve relevant official docs and approved memory (always runs on extractor output — finds docs regardless of original message type).
+- Step 8: Evaluate whether the answer is grounded and sufficient.
+- Step 9:
     - If sufficient: answer in the user's language.
     - If incomplete but potentially answerable: ask one focused follow-up question.
     - If insufficient: escalate to external support API.
-- Step 8: If escalated, notify the user politely.
-- Step 9: When human support responds, send the final answer back to the same group and store the approved resolution for reuse.
+- Step 10: If escalated, notify the user politely.
+- Step 11: When human support responds, send the final answer back to the same group and store the approved resolution for reuse.
 
 **FINAL INSTRUCTION**
 

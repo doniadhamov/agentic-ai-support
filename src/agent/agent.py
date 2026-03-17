@@ -24,7 +24,9 @@ class SupportAgent:
     Decision flow::
 
         incoming message
-          → classify (NON_SUPPORT | SUPPORT_QUESTION | CLARIFICATION_NEEDED | ESCALATION_REQUIRED)
+          → RAG probe (embed + Qdrant top-3) — fast & cheap
+          → if strong match (≥ RAG_OVERRIDE_MIN_SCORE): treat as SUPPORT_QUESTION directly
+          → if no match: classify (NON_SUPPORT | SUPPORT_QUESTION | CLARIFICATION_NEEDED | ESCALATION_REQUIRED)
           → extract standalone question + language
           → retrieve + filter chunks from Qdrant
           → generate grounded answer or escalation decision
@@ -61,6 +63,7 @@ class SupportAgent:
         Returns:
             :class:`AgentOutput` ready for consumption by the Telegram handler.
         """
+        settings = get_settings()
         log_ctx = {
             "group_id": agent_input.group_id,
             "user_id": agent_input.user_id,
@@ -68,63 +71,71 @@ class SupportAgent:
         }
         logger.bind(**log_ctx).info("Processing message")
 
-        # --- Step 1: Classify -------------------------------------------------
-        classification = await self._classifier.classify(
-            message_text=agent_input.message_text,
-            conversation_context=agent_input.conversation_context,
-            image_data=agent_input.image_data,
-        )
-        log_ctx["category"] = classification.category.value
-        log_ctx["language"] = classification.language
-        logger.bind(**log_ctx).info(
-            "category={} language={}", classification.category.value, classification.language
-        )
-
-        # --- Step 2: NON_SUPPORT — check RAG before discarding -----------------
-        if classification.category == MessageCategory.NON_SUPPORT:
-            # Quick RAG lookup: if the message closely matches documentation,
-            # override to SUPPORT_QUESTION. This catches imperative requests
-            # like "Request SFTP credentials from Chase" that the classifier
-            # may not recognise as support questions.
-            settings = get_settings()
+        # --- Step 1: RAG probe (fast & cheap — embedding + Qdrant) ------------
+        # Skip RAG probe only when text is completely empty (e.g., photo-only)
+        message_text = agent_input.message_text.strip()
+        if message_text:
             probe_chunks = await self._retriever.retrieve(
-                question=agent_input.message_text,
-                language=classification.language,
+                question=message_text,
+                language="en",  # language unknown yet, "en" is fine for embedding
                 top_k=3,
             )
             best_score = max((c.score for c in probe_chunks), default=0.0)
-            if best_score >= settings.rag_override_min_score:
-                logger.bind(**log_ctx).info(
-                    "RAG override: NON_SUPPORT → SUPPORT_QUESTION (best_score={:.3f}, threshold={:.3f})",
-                    best_score,
-                    settings.rag_override_min_score,
-                )
-                classification.category = MessageCategory.SUPPORT_QUESTION
-            else:
-                logger.bind(**log_ctx).debug(
-                    "RAG probe: no override (best_score={:.3f})", best_score
-                )
+        else:
+            probe_chunks = []
+            best_score = 0.0
+
+        logger.bind(**log_ctx).info(
+            "RAG probe: best_score={:.3f} (threshold={:.3f}, text_len={})",
+            best_score,
+            settings.rag_override_min_score,
+            len(message_text),
+        )
+
+        # --- Step 2: Decide path based on RAG probe result --------------------
+        if best_score >= settings.rag_override_min_score:
+            # Strong documentation match — skip classifier, treat as SUPPORT_QUESTION
+            logger.bind(**log_ctx).info("RAG fast-path: strong doc match, skipping classifier")
+            category = MessageCategory.SUPPORT_QUESTION
+        else:
+            # No strong match — run classifier for NON_SUPPORT / CLARIFICATION / ESCALATION
+            classification = await self._classifier.classify(
+                message_text=agent_input.message_text,
+                conversation_context=agent_input.conversation_context,
+                images=agent_input.images or None,
+            )
+            category = classification.category
+            logger.bind(**log_ctx).info(
+                "Classified: category={} language={}",
+                category.value,
+                classification.language,
+            )
+
+            # NON_SUPPORT — nothing to do
+            if category == MessageCategory.NON_SUPPORT:
                 return AgentOutput(
                     category=MessageCategory.NON_SUPPORT,
                     language=classification.language,
                     should_reply=False,
                 )
 
-        # --- Step 3: Extract standalone question ------------------------------
+        log_ctx["category"] = category.value
+
+        # --- Step 3: Extract information from message -------------------------
         extraction = await self._extractor.extract(
             message_text=agent_input.message_text,
             conversation_context=agent_input.conversation_context,
-            image_data=agent_input.image_data,
+            images=agent_input.images or None,
         )
         language = extraction.language
 
         # --- Step 4: CLARIFICATION_NEEDED — no retrieval yet ------------------
-        if classification.category == MessageCategory.CLARIFICATION_NEEDED:
+        if category == MessageCategory.CLARIFICATION_NEEDED:
             generation = await self._generator.generate(
                 question=extraction.extracted_question,
                 chunks=[],
                 language=language,
-                image_data=agent_input.image_data,
+                images=agent_input.images or None,
             )
             return AgentOutput(
                 category=MessageCategory.CLARIFICATION_NEEDED,
@@ -138,6 +149,7 @@ class SupportAgent:
             )
 
         # --- Step 5: Retrieve and filter knowledge chunks ---------------------
+        # Always runs on the extractor's output — this is the real retrieval
         raw_chunks = await self._retriever.retrieve(
             question=extraction.extracted_question,
             language=language,
@@ -155,14 +167,12 @@ class SupportAgent:
             question=extraction.extracted_question,
             chunks=filtered_chunks,
             language=language,
-            image_data=agent_input.image_data,
+            images=agent_input.images or None,
         )
 
         # Determine final category: generator may override to ESCALATION_REQUIRED
         final_category = (
-            MessageCategory.ESCALATION_REQUIRED
-            if generation.needs_escalation
-            else classification.category
+            MessageCategory.ESCALATION_REQUIRED if generation.needs_escalation else category
         )
 
         # --- Step 7: Create escalation ticket if needed -----------------------

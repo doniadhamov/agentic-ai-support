@@ -7,16 +7,23 @@ human agents via an external ticket API.
 ## Architecture Overview
 
 ```
-Telegram Group Message (text / photo / photo+caption)
-        │
-        ├── if photo: download image bytes (up to 5 MB)
+Telegram Group Message (text / photo / voice / audio / image document)
         │
         ▼
-  MessageClassifier  ──── NON_SUPPORT ──► (ignore)
+  Preprocessor  ──► text: as-is
+                ──► photo: download bytes → images[]
+                ──► voice/audio: download → Gemini Flash transcription → text
+                ──► document(image/*): download → images[]
+        │
+        ▼ (debounce batches consecutive messages from same user)
+  RAG Probe (embed text + Qdrant top-3)  ──── score ≥ threshold ──► SUPPORT_QUESTION (skip classifier)
+        │  (skip if text < 5 chars)            (fast & cheap)
+        ▼ no strong match
+  MessageClassifier  ──── NON_SUPPORT ──► (ignore — no further API calls)
   (Claude Vision)    ──── CLARIFICATION_NEEDED ──► ask follow-up
-        │                  (sees image + text)
+        │                  (sees images + text + conversation history)
         ▼ SUPPORT_QUESTION / ESCALATION_REQUIRED
-  QuestionExtractor  (clean standalone question + language; describes image content)
+  QuestionExtractor  (extracted information + language; describes images, voice, text)
   (Claude Vision)
         │
         ▼

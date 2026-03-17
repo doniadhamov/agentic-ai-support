@@ -31,6 +31,16 @@ class Settings(BaseSettings):
     gemini_embedding_dimensions: int = Field(
         default=3072, description="Output dimensionality for embeddings"
     )
+    gemini_flash_model: str = Field(
+        default="gemini-2.0-flash",
+        description="Gemini Flash model for voice transcription",
+    )
+    max_voice_duration_seconds: int = Field(
+        default=120,
+        ge=1,
+        le=600,
+        description="Max voice message duration to transcribe (seconds)",
+    )
 
     # --- PostgreSQL (optional — falls back to JSON/in-memory if empty) ---
     database_url: str = Field(
