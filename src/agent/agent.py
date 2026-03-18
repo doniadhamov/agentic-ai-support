@@ -111,6 +111,14 @@ class SupportAgent:
                 classification.language,
             )
 
+            # Images attached in a support group are almost always screenshots of a
+            # problem — override NON_SUPPORT so the pipeline runs normally.
+            if category == MessageCategory.NON_SUPPORT and agent_input.images:
+                logger.bind(**log_ctx).info(
+                    "Classifier returned NON_SUPPORT but message has images — overriding to SUPPORT_QUESTION"
+                )
+                category = MessageCategory.SUPPORT_QUESTION
+
             # NON_SUPPORT — nothing to do
             if category == MessageCategory.NON_SUPPORT:
                 return AgentOutput(
