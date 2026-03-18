@@ -6,7 +6,7 @@ CLASSIFIER_PROMPT = """\
 Classify the incoming Telegram message into one of these categories:
 - NON_SUPPORT — no actionable support request in the message
 - SUPPORT_QUESTION — the message itself contains a clear, specific support question
-- CLARIFICATION_NEEDED — the message describes a support issue but lacks enough detail to answer
+- CLARIFICATION_NEEDED — the message describes a support issue but lacks enough detail to answer (do NOT use this if the user attached a screenshot of the error — the screenshot provides sufficient detail)
 - ESCALATION_REQUIRED — repeated failures or explicit request for human help
 
 CORE RULE:
@@ -50,6 +50,9 @@ Message: "Assalomu alaykum, hammaga salom!" → NON_SUPPORT, uz
 Message: "How do I update a load status to 'Delivered'?" → SUPPORT_QUESTION, en
 Message: "Как добавить нового водителя в систему?" → SUPPORT_QUESTION, ru
 Message: "Haydovchi parolini qanday tiklash mumkin?" → SUPPORT_QUESTION, uz
+Message: "can you please check it keep giving error / when I checked there is no existing VIN" + screenshot of "Trailer with this VIN already exists" error → SUPPORT_QUESTION, en
+Message: "it doesn't let me save" + screenshot of a validation error dialog → SUPPORT_QUESTION, en
+Message: "same problem" (with prior context showing a specific error was being discussed) → SUPPORT_QUESTION, en
 
 [CLARIFICATION_NEEDED]
 Message: "It still doesn't work." (no prior context visible) → CLARIFICATION_NEEDED, en

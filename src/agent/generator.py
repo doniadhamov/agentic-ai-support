@@ -136,7 +136,7 @@ class AnswerGenerator:
         self._client = client or anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
         self._model = settings.anthropic_model
 
-    @async_retry()
+    @async_retry(min_wait=5.0, max_wait=65.0)
     async def generate(
         self,
         question: str,
