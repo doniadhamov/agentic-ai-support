@@ -53,7 +53,6 @@ class AgentOutput(BaseModel):
     needs_retrieval: bool = Field(default=False)
     needs_escalation: bool = Field(default=False)
     escalation_reason: str = Field(default="")
-    ticket_id: str = Field(default="", description="Ticket ID if a ticket was created")
     conversation_summary: str = Field(default="")
     knowledge_sources_used: list[KnowledgeSource] = Field(default_factory=list)
 
@@ -81,3 +80,20 @@ class GeneratorResult(BaseModel):
     needs_escalation: bool = Field(default=False)
     escalation_reason: str = Field(default="")
     knowledge_sources_used: list[KnowledgeSource] = Field(default_factory=list)
+
+
+class ThreadRoutingAction(StrEnum):
+    ROUTE_TO_EXISTING = "route_to_existing"
+    CREATE_NEW = "create_new"
+    SKIP_ZENDESK = "skip_zendesk"
+
+
+class ThreadRoutingResult(BaseModel):
+    """Output of the AI-powered thread router."""
+
+    action: ThreadRoutingAction
+    ticket_id: int | None = Field(
+        default=None,
+        description="Zendesk ticket ID to route to (only for route_to_existing)",
+    )
+    reasoning: str = Field(default="", description="Explanation for the routing decision")

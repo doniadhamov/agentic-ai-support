@@ -35,7 +35,7 @@ class GroupContext:
 
     def __init__(self, chat_id: int, window_size: int = 20) -> None:
         self.chat_id: int = chat_id
-        self.open_tickets: dict[int, str] = {}
+        self.open_tickets: dict[int, int] = {}
         self._window: deque[MessageRecord] = deque(maxlen=window_size)
         self._lock: asyncio.Lock = asyncio.Lock()
         self._use_db: bool = bool(get_settings().database_url)
@@ -115,7 +115,7 @@ class GroupContext:
     # Ticket tracking
     # ------------------------------------------------------------------
 
-    async def add_ticket(self, message_id: int, ticket_id: str) -> None:
+    async def add_ticket(self, message_id: int, ticket_id: int) -> None:
         """Register an open escalation ticket for *message_id*."""
         async with self._lock:
             self.open_tickets[message_id] = ticket_id

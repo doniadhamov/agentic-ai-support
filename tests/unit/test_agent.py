@@ -28,9 +28,6 @@ def _make_agent(
     needs_escalation: bool = False,
     answer: str = "Here is your answer.",
     follow_up: str = "",
-    ticket_client: object | None = None,
-    ticket_store: object | None = None,
-    approved_memory: object | None = None,
 ) -> SupportAgent:
     classifier = MagicMock()
     classifier.classify = AsyncMock(
@@ -72,9 +69,6 @@ def _make_agent(
         retriever=retriever,
         reranker=reranker,
         generator=generator,
-        ticket_client=ticket_client,
-        ticket_store=ticket_store,
-        approved_memory=approved_memory,
     )
 
 
@@ -145,8 +139,8 @@ async def test_process_clarification_needed_no_retrieval() -> None:
     assert output.should_reply is True
     assert output.category == MessageCategory.CLARIFICATION_NEEDED
     assert output.needs_retrieval is False
-    # Retriever must NOT be called for clarification
-    agent._retriever.retrieve.assert_not_called()  # type: ignore[attr-defined]
+    # Retriever is called once for the RAG probe, but NOT for the main retrieval
+    assert agent._retriever.retrieve.call_count == 1  # type: ignore[attr-defined]
 
 
 # ---------------------------------------------------------------------------
@@ -155,83 +149,16 @@ async def test_process_clarification_needed_no_retrieval() -> None:
 
 
 @pytest.mark.asyncio
-async def test_process_escalation_creates_ticket() -> None:
-    ticket_record = MagicMock()
-    ticket_record.ticket_id = "TICKET-123"
-
-    ticket_client = MagicMock()
-    ticket_client.create_ticket = AsyncMock(return_value=ticket_record)
-
-    ticket_store = MagicMock()
-    ticket_store.add = AsyncMock()
-
+async def test_process_escalation_detected() -> None:
+    """When generator flags escalation, the output should reflect it."""
     agent = _make_agent(
         category=MessageCategory.SUPPORT_QUESTION,
         needs_escalation=True,
-        ticket_client=ticket_client,
-        ticket_store=ticket_store,
     )
     output = await agent.process(_make_input())
 
     assert output.needs_escalation is True
-    assert output.ticket_id == "TICKET-123"
     assert output.category == MessageCategory.ESCALATION_REQUIRED
-    ticket_client.create_ticket.assert_awaited_once()
-    ticket_store.add.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_process_escalation_without_ticket_client() -> None:
-    """Escalation without a ticket client should not raise; ticket_id stays empty."""
-    agent = _make_agent(
-        category=MessageCategory.SUPPORT_QUESTION,
-        needs_escalation=True,
-        ticket_client=None,
-        ticket_store=None,
-    )
-    output = await agent.process(_make_input())
-
-    assert output.needs_escalation is True
-    assert output.ticket_id == ""
-
-
-@pytest.mark.asyncio
-async def test_process_ticket_creation_failure_is_swallowed() -> None:
-    ticket_client = MagicMock()
-    ticket_client.create_ticket = AsyncMock(side_effect=RuntimeError("API down"))
-
-    ticket_store = MagicMock()
-    ticket_store.add = AsyncMock()
-
-    agent = _make_agent(
-        category=MessageCategory.SUPPORT_QUESTION,
-        needs_escalation=True,
-        ticket_client=ticket_client,
-        ticket_store=ticket_store,
-    )
-    # Must not raise even though create_ticket fails
-    output = await agent.process(_make_input())
-    assert output.ticket_id == ""
-
-
-# ---------------------------------------------------------------------------
-# Approved memory — no automatic storage (requires human approval)
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_process_does_not_auto_store_memory() -> None:
-    """Memory storage must NOT happen automatically — it requires human approval."""
-    approved_memory = MagicMock()
-    approved_memory.store = AsyncMock()
-
-    agent = _make_agent(
-        category=MessageCategory.SUPPORT_QUESTION,
-        approved_memory=approved_memory,
-    )
-    await agent.process(_make_input())
-
-    approved_memory.store.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------

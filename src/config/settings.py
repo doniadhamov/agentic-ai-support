@@ -42,10 +42,10 @@ class Settings(BaseSettings):
         description="Max voice message duration to transcribe (seconds)",
     )
 
-    # --- PostgreSQL (optional — falls back to JSON/in-memory if empty) ---
+    # --- PostgreSQL (required for conversation thread storage) ---
     database_url: str = Field(
         default="",
-        description="PostgreSQL async URL; empty = use JSON file fallback",
+        description="PostgreSQL async URL (required for Zendesk ticket sync)",
     )
 
     # --- Qdrant ---
@@ -54,30 +54,16 @@ class Settings(BaseSettings):
 
     # --- Zendesk ---
     zendesk_subdomain: str = Field(default="support.datatruck.io")
-    zendesk_api_token: str = Field(default="")
-    zendesk_email: str = Field(default="")
-
-    # --- Support Ticket API ---
-    support_api_base_url: str = Field(default="")
-    support_api_key: str = Field(default="")
-    ticket_callback_mode: str = Field(default="poll", pattern="^(poll|webhook)$")
-    ticket_poll_interval_seconds: int = Field(default=60, ge=10)
+    zendesk_api_token: str = Field(..., description="Zendesk API token (required for ticket sync)")
+    zendesk_email: str = Field(..., description="Zendesk account email (required for ticket sync)")
+    zendesk_bot_user_id: int = Field(
+        default=0,
+        description="Zendesk user ID of the bot, used to filter own comments in webhook",
+    )
 
     # --- Agent Behaviour ---
     support_min_confidence_score: float = Field(default=0.70, ge=0.0, le=1.0)
     group_context_window: int = Field(default=20, ge=1, le=100)
-    message_debounce_seconds: float = Field(
-        default=3.0,
-        ge=0.0,
-        le=30.0,
-        description="Base seconds to wait for additional messages from the same user",
-    )
-    message_debounce_max_seconds: float = Field(
-        default=10.0,
-        ge=0.0,
-        le=60.0,
-        description="Maximum total debounce wait when messages look incomplete",
-    )
     rag_top_k: int = Field(default=5, ge=1, le=20)
     rag_override_min_score: float = Field(
         default=0.75,

@@ -1,9 +1,8 @@
-"""Tickets page — read-only view of escalated support tickets."""
+"""Tickets page — view conversation threads and Zendesk tickets."""
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
+import asyncio
 
 import pandas as pd
 import streamlit as st
@@ -26,13 +25,6 @@ div[data-testid="stMetric"] [data-testid="stMetricValue"] { color: white !import
 section[data-testid="stSidebar"] { background: linear-gradient(180deg, #1a1a2e 0%, #16213e 100%); }
 section[data-testid="stSidebar"] .stMarkdown p, section[data-testid="stSidebar"] .stMarkdown a, section[data-testid="stSidebar"] span { color: #e0e0e0 !important; }
 
-.ticket-detail-card {
-    background: white;
-    border: 1px solid #e8ecf1;
-    border-radius: 12px;
-    padding: 24px;
-    margin: 8px 0;
-}
 .status-pill {
     display: inline-block;
     padding: 4px 14px;
@@ -41,102 +33,146 @@ section[data-testid="stSidebar"] .stMarkdown p, section[data-testid="stSidebar"]
     font-weight: 600;
     letter-spacing: 0.3px;
 }
-.pill-open { background: #dbeafe; color: #1e40af; }
-.pill-answered { background: #d1fae5; color: #065f46; }
+.pill-active { background: #dbeafe; color: #1e40af; }
 .pill-closed { background: #f3f4f6; color: #4b5563; }
+.pill-new { background: #fef3c7; color: #92400e; }
+.pill-open { background: #dbeafe; color: #1e40af; }
+.pill-pending { background: #fce7f3; color: #9d174d; }
+.pill-solved { background: #d1fae5; color: #065f46; }
 </style>
 """,
     unsafe_allow_html=True,
 )
 
 # --- Page header ---
-st.title("🎫 Escalated Tickets")
-st.caption("View support questions that were escalated to human agents.")
+st.title("🎫 Conversation Threads")
+st.caption("View Telegram ↔ Zendesk conversation threads.")
 
-# --- Load tickets ---
-tickets_path = Path("data/tickets.json")
-if not tickets_path.exists():
-    st.info("No tickets file found. Tickets will appear here after the bot escalates questions.")
-    st.stop()
 
-try:
-    raw: dict = json.loads(tickets_path.read_text())
-except Exception as exc:
-    st.error(f"Failed to read tickets file: {exc}")
-    st.stop()
+def _load_threads() -> list[dict]:
+    """Load conversation threads from the database."""
+    try:
+        from src.config.settings import get_settings
 
-if not raw:
-    st.info("No tickets yet. Escalated questions will appear here.")
+        settings = get_settings()
+        if not settings.database_url:
+            return []
+
+        from sqlalchemy import select
+
+        from src.database.engine import get_engine, get_session_factory
+        from src.database.models import ConversationThread
+
+        # Ensure engine is initialized
+        get_engine()
+        factory = get_session_factory()
+
+        async def _fetch() -> list[dict]:
+            async with factory() as session:
+                stmt = select(ConversationThread).order_by(
+                    ConversationThread.last_message_at.desc()
+                )
+                result = await session.execute(stmt)
+                threads = result.scalars().all()
+                return [
+                    {
+                        "id": t.id,
+                        "group_id": t.group_id,
+                        "user_id": t.user_id,
+                        "zendesk_ticket_id": t.zendesk_ticket_id,
+                        "subject": t.subject,
+                        "status": t.status,
+                        "created_at": str(t.created_at)[:19] if t.created_at else "—",
+                        "closed_at": str(t.closed_at)[:19] if t.closed_at else "—",
+                        "last_message_at": str(t.last_message_at)[:19] if t.last_message_at else "—",
+                    }
+                    for t in threads
+                ]
+
+        return asyncio.run(_fetch())
+    except Exception as exc:
+        st.error(f"Failed to load threads from database: {exc}")
+        return []
+
+
+threads = _load_threads()
+
+if not threads:
+    st.info("No conversation threads yet. Threads will appear here as messages are synced to Zendesk.")
     st.stop()
 
 # --- Status counts ---
-status_counts = {"open": 0, "answered": 0, "closed": 0}
-for record in raw.values():
-    s = record.get("status", "").lower()
-    if s in status_counts:
-        status_counts[s] += 1
+status_counts: dict[str, int] = {}
+for t in threads:
+    s = t.get("status", "unknown")
+    status_counts[s] = status_counts.get(s, 0) + 1
 
-c1, c2, c3, c4 = st.columns(4)
+c1, c2, c3 = st.columns(3)
 with c1:
-    st.metric("Total Tickets", len(raw))
+    st.metric("Total Threads", len(threads))
 with c2:
-    st.metric("Open", status_counts["open"])
+    st.metric("Active", status_counts.get("active", 0))
 with c3:
-    st.metric("Answered", status_counts["answered"])
-with c4:
-    st.metric("Closed", status_counts["closed"])
+    st.metric("Closed", status_counts.get("closed", 0))
 
 st.markdown("")
 
 # --- Filter controls ---
 filter_col1, filter_col2 = st.columns([1, 4])
 with filter_col1:
-    all_statuses = sorted({r.get("status", "unknown") for r in raw.values()})
+    all_statuses = sorted({t.get("status", "unknown") for t in threads})
     selected_status = st.selectbox("Status", ["All"] + all_statuses, label_visibility="collapsed")
 with filter_col2:
     search_query = st.text_input(
         "Search",
-        placeholder="🔍 Search tickets by question text...",
+        placeholder="🔍 Search by subject...",
         label_visibility="collapsed",
     )
 
 # --- Build filtered rows ---
 rows = []
-for ticket_id, record in raw.items():
-    if selected_status != "All" and record.get("status") != selected_status:
-        continue
-    if search_query:
-        question = (record.get("question", "") or "").lower()
-        if search_query.lower() not in question:
-            continue
+zendesk_subdomain = "support.datatruck.io"
+try:
+    from src.config.settings import get_settings
 
-    status = record.get("status", "unknown")
+    zendesk_subdomain = get_settings().zendesk_subdomain
+except Exception:
+    pass
+
+for t in threads:
+    if selected_status != "All" and t.get("status") != selected_status:
+        continue
+    if search_query and search_query.lower() not in (t.get("subject", "") or "").lower():
+        continue
+
+    ticket_id = t.get("zendesk_ticket_id", 0)
     rows.append(
         {
-            "Ticket ID": ticket_id,
-            "Question": (record.get("question", "") or "")[:120],
-            "Status": status,
-            "Group": record.get("group_id", "—"),
-            "User": record.get("user_id", "—"),
-            "Created": record.get("created_at", "—"),
+            "Thread ID": t.get("id", "—"),
+            "Zendesk Ticket": ticket_id,
+            "Subject": (t.get("subject", "") or "")[:100],
+            "Status": t.get("status", "unknown"),
+            "Group": t.get("group_id", "—"),
+            "User": t.get("user_id", "—"),
+            "Last Message": t.get("last_message_at", "—"),
+            "Created": t.get("created_at", "—"),
         }
     )
 
 if not rows:
-    st.warning("No tickets match the current filters.")
+    st.warning("No threads match the current filters.")
 else:
-    # --- Status pill helper ---
-    def _status_color(status: str) -> str:
+    # Add status indicator
+    def _status_icon(status: str) -> str:
         s = status.lower()
-        if s == "open":
+        if s == "active":
             return "🔵"
-        if s == "answered":
-            return "🟢"
-        return "⚪"
+        if s == "closed":
+            return "⚪"
+        return "🟡"
 
-    # Add status indicator to rows
     for row in rows:
-        row["Status"] = f"{_status_color(row['Status'])} {row['Status']}"
+        row["Status"] = f"{_status_icon(row['Status'])} {row['Status']}"
 
     df = pd.DataFrame(rows)
     st.dataframe(
@@ -144,75 +180,71 @@ else:
         use_container_width=True,
         hide_index=True,
         column_config={
-            "Ticket ID": st.column_config.TextColumn("Ticket ID", width="medium"),
-            "Question": st.column_config.TextColumn("Question", width="large"),
+            "Thread ID": st.column_config.NumberColumn("Thread", width="small"),
+            "Zendesk Ticket": st.column_config.NumberColumn("Zendesk #", width="small"),
+            "Subject": st.column_config.TextColumn("Subject", width="large"),
             "Status": st.column_config.TextColumn("Status", width="small"),
             "Group": st.column_config.NumberColumn("Group", width="small"),
             "User": st.column_config.NumberColumn("User", width="small"),
+            "Last Message": st.column_config.TextColumn("Last Msg", width="medium"),
             "Created": st.column_config.TextColumn("Created", width="medium"),
         },
     )
 
-    st.caption(f"Showing {len(rows)} of {len(raw)} ticket(s)")
+    st.caption(f"Showing {len(rows)} of {len(threads)} thread(s)")
 
     st.divider()
 
     # --- Detail view ---
-    st.markdown("#### Ticket Details")
+    st.markdown("#### Thread Details")
 
-    ticket_ids = [r["Ticket ID"] for r in rows]
-    selected_ticket = st.selectbox(
-        "Select a ticket to view details",
-        ticket_ids,
+    thread_ids = [r["Thread ID"] for r in rows]
+    selected_thread_id = st.selectbox(
+        "Select a thread to view details",
+        thread_ids,
         label_visibility="collapsed",
     )
 
-    if selected_ticket and selected_ticket in raw:
-        record = raw[selected_ticket]
-        status = record.get("status", "unknown").lower()
-        pill_class = f"pill-{status}" if status in ("open", "answered", "closed") else "pill-closed"
+    if selected_thread_id:
+        thread_data = next((t for t in threads if t.get("id") == selected_thread_id), None)
+        if thread_data:
+            status = thread_data.get("status", "unknown").lower()
+            pill_class = f"pill-{status}" if status in ("active", "closed") else "pill-active"
+            ticket_id = thread_data.get("zendesk_ticket_id", 0)
 
-        # Header row
-        st.markdown(
-            f'**{selected_ticket}** &nbsp; '
-            f'<span class="status-pill {pill_class}">{record.get("status", "unknown")}</span>',
-            unsafe_allow_html=True,
-        )
+            # Header row
+            zendesk_link = f"https://{zendesk_subdomain}/agent/tickets/{ticket_id}"
+            st.markdown(
+                f'**Thread #{selected_thread_id}** &nbsp; '
+                f'<span class="status-pill {pill_class}">{thread_data.get("status", "unknown")}</span>'
+                f' &nbsp; | &nbsp; '
+                f'<a href="{zendesk_link}" target="_blank">View in Zendesk →</a>',
+                unsafe_allow_html=True,
+            )
 
-        # Info columns
-        meta_col1, meta_col2, meta_col3 = st.columns(3)
-        with meta_col1:
-            st.markdown(f"**Group ID:** `{record.get('group_id', '—')}`")
-        with meta_col2:
-            st.markdown(f"**User ID:** `{record.get('user_id', '—')}`")
-        with meta_col3:
-            st.markdown(f"**Created:** {record.get('created_at', '—')}")
+            # Info columns
+            meta_col1, meta_col2, meta_col3 = st.columns(3)
+            with meta_col1:
+                st.markdown(f"**Group ID:** `{thread_data.get('group_id', '—')}`")
+                st.markdown(f"**User ID:** `{thread_data.get('user_id', '—')}`")
+            with meta_col2:
+                st.markdown(f"**Zendesk Ticket:** `{ticket_id}`")
+                st.markdown(f"**Status:** {thread_data.get('status', '—')}")
+            with meta_col3:
+                st.markdown(f"**Created:** {thread_data.get('created_at', '—')}")
+                st.markdown(f"**Closed:** {thread_data.get('closed_at', '—')}")
 
-        st.markdown("")
+            st.markdown("")
 
-        # Question
-        st.markdown("**Question**")
-        st.text_area(
-            "question_detail",
-            value=record.get("question", ""),
-            height=150,
-            disabled=True,
-            label_visibility="collapsed",
-        )
-
-        # Answer
-        answer = record.get("answer")
-        if answer:
-            st.markdown("**Answer**")
+            # Subject
+            st.markdown("**Subject**")
             st.text_area(
-                "answer_detail",
-                value=answer,
-                height=150,
+                "subject_detail",
+                value=thread_data.get("subject", ""),
+                height=80,
                 disabled=True,
                 label_visibility="collapsed",
             )
-        else:
-            st.info("No answer yet — waiting for human support agent response.")
 
 # --- Sidebar ---
 with st.sidebar:

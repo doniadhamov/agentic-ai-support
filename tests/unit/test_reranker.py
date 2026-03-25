@@ -87,9 +87,9 @@ def test_mixed_sources_preserved() -> None:
 
 
 def test_default_threshold_from_settings() -> None:
-    """When no min_score is provided, defaults to settings.support_min_confidence_score (0.75)."""
+    """When no min_score is provided, defaults to settings.support_min_confidence_score (0.70)."""
     f = ScoreThresholdFilter()
-    chunks = [_chunk(0.8), _chunk(0.7)]
+    chunks = [_chunk(0.8), _chunk(0.65)]
     result = f.filter(chunks)
     assert len(result) == 1
     assert result[0].score == 0.8

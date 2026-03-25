@@ -1,8 +1,9 @@
 # DataTruck AI Support Bot
 
 AI-powered Telegram support bot that monitors group chats, answers support questions
-using multimodal RAG over Zendesk documentation, and escalates unanswerable issues to
-human agents via an external ticket API.
+using multimodal RAG over Zendesk documentation, and provides bidirectional
+Telegram ↔ Zendesk sync so human support agents can respond from Zendesk while
+users stay in Telegram.
 
 ## Architecture Overview
 
@@ -15,9 +16,9 @@ Telegram Group Message (text / photo / voice / audio / image document)
                 ──► voice/audio: download → Gemini Flash transcription → text
                 ──► document(image/*): download → images[]
         │
-        ▼ (debounce batches consecutive messages from same user)
+        ▼ (store ALL messages in PostgreSQL)
   RAG Probe (embed text + Qdrant top-3)  ──── score ≥ threshold ──► SUPPORT_QUESTION (skip classifier)
-        │  (skip if text < 5 chars)            (fast & cheap)
+        │                                      (fast & cheap)
         ▼ no strong match
   MessageClassifier  ──── NON_SUPPORT ──► (ignore — no further API calls)
   (Claude Vision)    ──── CLARIFICATION_NEEDED ──► ask follow-up
@@ -28,32 +29,54 @@ Telegram Group Message (text / photo / voice / audio / image document)
         │
         ▼
   RAGRetriever  ──► datatruck_docs  (Zendesk articles)
-                ──► datatruck_memory (approved Q&A pairs)
+                ──► datatruck_memory (approved Q&A pairs from closed tickets)
         │
         ▼
   ScoreThresholdFilter  (drop chunks below MIN_CONFIDENCE_SCORE)
         │
         ▼
   AnswerGenerator  ──► grounded answer  ──► format_reply() ──► Telegram
-  (Claude Vision)  ──► needs_escalation ──► TicketAPIClient ──► human agent
-  (sees screenshot       TicketPoller polls for resolution
-   + retrieved docs)
+  (Claude Vision)  ──► needs_escalation ──► escalation notice ──► Telegram + Zendesk
+        │
+        ▼
+  ZendeskSyncService
+        │
+        ├── ThreadRouter (Claude Haiku) analyzes message + active tickets + history
+        │     ├── route_to_existing  ──► add comment to existing Zendesk ticket
+        │     ├── create_new         ──► create new Zendesk ticket + add comment
+        │     └── skip_zendesk       ──► store in DB only (no Zendesk sync)
+        │
+        └── Upload photos/attachments to Zendesk Attachments API
+                (two-step: upload → get token → reference in comment)
+
+Zendesk Agent Responds
+        │
+        ▼
+  POST /api/zendesk/webhook  (Zendesk trigger sends comment JSON)
+        │
+        ├── Look up ConversationThread → find Telegram group_id
+        ├── Store agent message in DB (source="zendesk")
+        ├── Send message to Telegram group
+        └── If ticket solved/closed:
+              ├── Close conversation thread
+              ├── TicketSummarizer: summarize → generalized Q&A (de-identified)
+              └── Store in datatruck_memory for future RAG retrieval
 ```
 
 ### Key Components
 
 | Module | Purpose |
 |---|---|
-| `src/agent/` | Orchestrator, classifier (Haiku Vision), extractor (Haiku Vision), generator (Sonnet Vision), prompts |
+| `src/agent/` | Orchestrator, classifier (Haiku Vision), extractor (Haiku Vision), generator (Sonnet Vision), thread router (Haiku), ticket summarizer, prompts |
 | `src/rag/` | Query builder, retriever (Qdrant), score-threshold reranker |
-| `src/ingestion/` | Zendesk API client, HTML processor, chunker, sync manager |
+| `src/ingestion/` | Zendesk Help Center API client (read-only), HTML processor, chunker, sync manager |
 | `src/vector_db/` | Qdrant async wrapper, collection setup, article indexer |
 | `src/embeddings/` | Gemini Embedding 2 (`gemini-embedding-2-preview`) |
-| `src/escalation/` | Ticket API client, ticket store (PostgreSQL or JSON fallback), background poller |
-| `src/database/` | SQLAlchemy 2.0 async engine, ORM models, repository helpers |
-| `src/api/` | FastAPI health check and metrics endpoints (port 8000) |
-| `src/memory/` | Approved-answer store (resolved Q&A back into Qdrant) |
-| `src/telegram/` | aiogram bot, per-group context manager, message/webhook handlers (text + photo) |
+| `src/escalation/` | `ZendeskTicketClient` (Support API v2), `ConversationThreadStore`, `ZendeskSyncService`, Zendesk→Telegram webhook handler |
+| `src/database/` | SQLAlchemy 2.0 async engine, ORM models (`MessageRow`, `ConversationThread`, `TicketRow`), repository helpers |
+| `src/api/` | FastAPI health check, metrics, and Zendesk webhook endpoints (port 8000) |
+| `src/memory/` | Approved-answer store (resolved Q&A from closed tickets back into Qdrant) |
+| `src/telegram/` | aiogram bot, per-group context manager, message handler (text + photo + voice) |
 
 ## Quickstart
 
@@ -80,8 +103,7 @@ make infra
 # PostgreSQL available at localhost:5432
 ```
 
-> PostgreSQL is optional — if `DATABASE_URL` is left empty, the bot falls back to
-> in-memory context and JSON file storage for tickets.
+> **PostgreSQL is required** for conversation message storage and Zendesk ticket sync.
 
 ### 3. Install dependencies
 
@@ -108,10 +130,27 @@ uv run python -m src.telegram.bot
 The bot starts in long-polling mode by default. Set `TELEGRAM_WEBHOOK_URL` to switch to
 webhook mode (the server listens on `:8080`).
 
-The FastAPI health/metrics server runs alongside the bot on port **8000**:
+The FastAPI server runs alongside the bot on port **8000**:
 - `GET /health` — liveness probe
-- `GET /health/ready` — readiness probe (checks Qdrant + PostgreSQL)
-- `GET /metrics` — operational metrics (doc/memory counts, open tickets)
+- `GET /health/ready` — readiness probe (checks Qdrant + PostgreSQL + Zendesk)
+- `GET /metrics` — operational metrics (doc/memory counts, open tickets, active threads)
+- `POST /api/zendesk/webhook` — receives Zendesk agent comments for delivery to Telegram
+
+### 6. Configure Zendesk webhook
+
+In your Zendesk admin, create a **Trigger** that fires when an agent adds a public comment:
+- **Action**: Notify webhook → `POST https://<your-bot-host>:8000/api/zendesk/webhook`
+- **Payload** (JSON):
+  ```json
+  {
+    "ticket_id": {{ticket.id}},
+    "comment_body": {{ticket.latest_comment}},
+    "author_id": {{current_user.id}},
+    "ticket_status": "{{ticket.status}}"
+  }
+  ```
+
+Set `ZENDESK_BOT_USER_ID` in `.env` to the bot's Zendesk user ID so it can filter out its own comments.
 
 ## Environment Variables
 
@@ -120,27 +159,68 @@ The FastAPI health/metrics server runs alongside the bot on port **8000**:
 | `TELEGRAM_BOT_TOKEN` | ✅ | — | Bot token from BotFather |
 | `ANTHROPIC_API_KEY` | ✅ | — | Anthropic API key |
 | `GOOGLE_API_KEY` | ✅ | — | Google API key for Gemini Embedding 2 |
+| `ZENDESK_API_TOKEN` | ✅ | — | Zendesk API token |
+| `ZENDESK_EMAIL` | ✅ | — | Zendesk account email |
+| `DATABASE_URL` | ✅ | — | PostgreSQL async URL (required for Zendesk ticket sync) |
 | `ANTHROPIC_MODEL` | | `claude-sonnet-4-6` | Sonnet model for answer generation |
-| `ANTHROPIC_FAST_MODEL` | | `claude-haiku-4-5` | Haiku model for classification/extraction (~10x cheaper) |
-| `DATABASE_URL` | | `` | PostgreSQL async URL (empty = JSON/in-memory fallback) |
+| `ANTHROPIC_FAST_MODEL` | | `claude-haiku-4-5` | Haiku model for classification/extraction/thread routing |
 | `QDRANT_URL` | | `http://localhost:6333` | Qdrant instance URL |
 | `QDRANT_API_KEY` | | `` | Qdrant API key (if using Qdrant Cloud) |
 | `ZENDESK_SUBDOMAIN` | | `support.datatruck.io` | Zendesk subdomain |
-| `ZENDESK_API_TOKEN` | | `` | Zendesk API token |
-| `ZENDESK_EMAIL` | | `` | Zendesk account email |
-| `SUPPORT_API_BASE_URL` | | `` | External ticket API base URL |
-| `SUPPORT_API_KEY` | | `` | External ticket API key |
-| `TICKET_CALLBACK_MODE` | | `poll` | `poll` or `webhook` |
-| `TICKET_POLL_INTERVAL_SECONDS` | | `60` | Ticket polling interval |
-| `SUPPORT_MIN_CONFIDENCE_SCORE` | | `0.75` | Minimum Qdrant cosine score to accept a chunk |
+| `ZENDESK_BOT_USER_ID` | | `0` | Zendesk user ID of the bot (filters own webhook comments) |
+| `SUPPORT_MIN_CONFIDENCE_SCORE` | | `0.70` | Minimum Qdrant cosine score to accept a chunk |
+| `RAG_OVERRIDE_MIN_SCORE` | | `0.75` | Min RAG score to skip classifier (fast-path to SUPPORT_QUESTION) |
 | `GROUP_CONTEXT_WINDOW` | | `20` | Recent messages to retain per group |
 | `RAG_TOP_K` | | `5` | Number of chunks to retrieve |
-| `ZENDESK_SYNC_INTERVAL_HOURS` | | `6` | Auto-sync interval (0 = disabled) |
+| `ZENDESK_SYNC_INTERVAL_HOURS` | | `6` | Auto-sync interval for Zendesk articles (0 = disabled) |
 | `GEMINI_EMBEDDING_MODEL` | | `models/gemini-embedding-2-preview` | Gemini embedding model |
 | `GEMINI_EMBEDDING_DIMENSIONS` | | `3072` | Embedding output dimensionality |
+| `GEMINI_FLASH_MODEL` | | `gemini-2.0-flash` | Gemini Flash model for voice transcription |
+| `MAX_VOICE_DURATION_SECONDS` | | `120` | Max voice message duration to transcribe |
 | `TELEGRAM_WEBHOOK_URL` | | `` | Webhook base URL (empty = long-polling) |
+| `ADMIN_PASSWORD` | | `` | Admin dashboard password (empty = no auth) |
+| `ALLOWED_GROUPS_FILE` | | `data/allowed_groups.json` | Path to group allowlist JSON |
 | `LOG_LEVEL` | | `INFO` | Logging level |
 | `LOG_FILE` | | `logs/app.log` | Log file path |
+
+## Docker Compose
+
+| File | Purpose |
+|---|---|
+| `docker-compose.yml` | Full stack — Qdrant + PostgreSQL + ingestion job + bot + admin dashboard |
+| `docker-compose.qdrant.yml` | Qdrant + PostgreSQL — for local development (bot runs on host) |
+
+### Run fully in Docker
+
+```bash
+cp .env.example .env        # fill in all API keys
+make build                   # build the bot Docker image
+make ingest                  # one-shot Zendesk article ingestion
+make up                      # start everything
+make logs                    # follow bot logs
+```
+
+### Make targets
+
+| Target | What it does |
+|---|---|
+| `make build` | Build the bot Docker image |
+| `make up` | Start Qdrant + PostgreSQL + bot + dashboard (detached) |
+| `make down` | Stop all services |
+| `make down-v` | Stop all services and wipe volumes |
+| `make ingest` | One-shot Zendesk ingestion |
+| `make sync` | One-shot Zendesk delta sync |
+| `make restart` | Restart bot container |
+| `make logs` | Follow bot logs |
+| `make qdrant-only` | Start Qdrant only (local dev) |
+| `make infra` | Start Qdrant + PostgreSQL (local dev) |
+| `make dashboard` | Start admin dashboard (Docker) |
+| `make dashboard-local` | Start admin dashboard locally |
+| `make dashboard-logs` | Follow dashboard logs |
+| `make lint` | Run ruff check + format |
+| `make test` | Run all tests |
+| `make test-unit` | Unit tests only |
+| `make test-int` | Integration tests (requires Qdrant) |
 
 ## CLI Scripts
 
@@ -155,38 +235,34 @@ uv run python scripts/sync_zendesk.py [--hours N] [--dry-run]
 uv run python scripts/check_qdrant.py
 ```
 
+## Admin Dashboard
+
+Streamlit-based admin UI at `http://localhost:8501`:
+
+- **Home** — live metrics (active groups, ingested articles, memory entries, open tickets)
+- **Groups** — manage Telegram group allowlist (add/remove, search)
+- **Knowledge Base** — browse `datatruck_docs` / `datatruck_memory`; Delta Sync and Full Re-ingest
+- **Upload** — ingest PDF/DOCX/TXT/MD files into the knowledge base
+- **Tickets** — conversation threads with Zendesk ticket links, status metrics, search
+
 ## Testing
 
 ```bash
 # All tests
-uv run pytest
+make test
 
 # Unit tests only (no external services required)
-uv run pytest tests/unit/
+make test-unit
 
-# Integration tests (requires local Qdrant: docker compose up -d)
-uv run pytest tests/integration/
+# Integration tests (requires local Qdrant: make infra)
+make test-int
 ```
-
-### Test coverage
-
-| Suite | Tests | Description |
-|---|---|---|
-| `tests/unit/test_classifier.py` | 7 | All 4 categories, 3 languages, error handling |
-| `tests/unit/test_extractor.py` | 6 | Question extraction, language detection |
-| `tests/unit/test_generator.py` | 7 | Answer generation, escalation decision |
-| `tests/unit/test_agent.py` | 9 | Full orchestrator — mocked sub-components |
-| `tests/unit/test_group_context.py` | 10 | Sliding window, ticket tracking, concurrency |
-| `tests/unit/test_chunker.py` | 12 | Chunking, overlap, image association |
-| `tests/unit/test_approved_memory.py` | 8 | Memory storage, retrieval, threshold |
-| `tests/integration/test_ingestion_pipeline.py` | 2 | Ingest → Qdrant → verify |
-| `tests/integration/test_rag_retrieval.py` | 8 | en/ru/uz retrieval, dedup, threshold |
-| `tests/integration/test_escalation_flow.py` | 9 | Ticket create/poll/close cycle + approved memory |
-| `tests/integration/test_e2e.py` | 3 | Full agent flow: seed → classify → retrieve → answer |
 
 ## Linting and Formatting
 
 ```bash
+make lint
+# or manually:
 uv run ruff check .
 uv run ruff format .
 ```
@@ -196,7 +272,26 @@ uv run ruff format .
 | Collection | Purpose | Dimensions | Distance |
 |---|---|---|---|
 | `datatruck_docs` | Zendesk article chunks | 3072 | Cosine |
-| `datatruck_memory` | Approved resolved Q&A pairs | 3072 | Cosine |
+| `datatruck_memory` | Approved resolved Q&A pairs (from closed tickets) | 3072 | Cosine |
 
 Point IDs are deterministic UUID5 derived from `(article_id, chunk_index)` so that
 re-ingestion is idempotent.
+
+## Bidirectional Zendesk Sync
+
+The bot syncs every Telegram group conversation to Zendesk tickets:
+
+1. **Telegram → Zendesk**: Every message is analyzed by the AI ThreadRouter to determine which Zendesk ticket it belongs to. Photos are uploaded via the Zendesk Attachments API. AI responses are also posted as Zendesk comments.
+
+2. **Zendesk → Telegram**: When a support agent responds in Zendesk, a webhook trigger sends the comment to the bot's `/api/zendesk/webhook` endpoint, which delivers it to the correct Telegram group.
+
+3. **Ticket closure**: When a ticket is solved/closed in Zendesk, the TicketSummarizer generates a de-identified Q&A summary and stores it in `datatruck_memory` for future RAG retrieval.
+
+### Thread Routing
+
+The `ThreadRouter` (Claude Haiku) intelligently routes messages:
+- Follow-ups go to the existing ticket
+- New topics create new tickets
+- If User B has the same problem as User A's active ticket, the message routes to User A's ticket (avoiding duplicates)
+- A Telegram reply doesn't automatically route to the replied-to message's ticket — the AI analyzes whether the content matches
+- Non-support messages (e.g. "thanks") are routed to an active ticket if contextually related

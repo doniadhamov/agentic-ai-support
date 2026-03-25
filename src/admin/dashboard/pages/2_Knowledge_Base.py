@@ -149,7 +149,9 @@ def _render_collection(collection: str) -> None:
                                 from src.vector_db.indexer import ArticleIndexer
 
                                 async def _full_ingest() -> dict:
-                                    from src.vector_db.collections import create_collections_if_not_exist
+                                    from src.vector_db.collections import (
+                                        create_collections_if_not_exist,
+                                    )
 
                                     await create_collections_if_not_exist(qdrant._client)
                                     embedder = GeminiEmbedder()

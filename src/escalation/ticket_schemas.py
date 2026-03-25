@@ -1,4 +1,4 @@
-"""Pydantic models for the escalation ticket workflow."""
+"""Pydantic models for the Zendesk ticket workflow."""
 
 from __future__ import annotations
 
@@ -9,28 +9,40 @@ from pydantic import BaseModel, Field
 
 
 class TicketStatus(StrEnum):
+    """Zendesk ticket statuses."""
+
+    NEW = "new"
     OPEN = "open"
-    ANSWERED = "answered"
+    PENDING = "pending"
+    HOLD = "hold"
+    SOLVED = "solved"
     CLOSED = "closed"
 
 
-class TicketCreate(BaseModel):
-    """Payload sent to the external ticket API when creating a new ticket."""
+class ZendeskTicketCreate(BaseModel):
+    """Payload for creating a new Zendesk ticket."""
 
-    group_id: int = Field(..., description="Telegram group chat ID")
-    user_id: int = Field(..., description="Telegram user ID who asked the question")
-    message_id: int = Field(..., description="Original Telegram message ID to reply to")
-    language: str = Field(default="en", description="Detected language code")
-    question: str = Field(..., description="Clean standalone question extracted by the agent")
-    conversation_summary: str = Field(
-        default="", description="Brief summary of relevant conversation context"
+    subject: str = Field(..., description="Ticket subject line")
+    body: str = Field(..., description="First comment body (HTML or plain text)")
+    requester_name: str = Field(default="Telegram User", description="Display name for the requester")
+    tags: list[str] = Field(default_factory=lambda: ["telegram", "ai-support-bot"])
+
+
+class ZendeskComment(BaseModel):
+    """A comment to add to an existing Zendesk ticket."""
+
+    body: str = Field(..., description="Comment body text")
+    public: bool = Field(default=True, description="Whether the comment is public")
+    attachment_tokens: list[str] = Field(
+        default_factory=list,
+        description="Upload tokens from the Zendesk Attachments API",
     )
 
 
 class TicketRecord(BaseModel):
-    """In-memory representation of a ticket tracked by the TicketStore."""
+    """In-memory representation of a ticket tracked by the store."""
 
-    ticket_id: str = Field(..., description="Unique ticket ID returned by the ticket API")
+    ticket_id: int = Field(..., description="Zendesk ticket ID (integer)")
     group_id: int
     user_id: int
     message_id: int = Field(..., description="Original Telegram message ID to reply to")
@@ -42,8 +54,8 @@ class TicketRecord(BaseModel):
 
 
 class TicketResponse(BaseModel):
-    """Response returned by the ticket API for a status check."""
+    """Response returned by the Zendesk API for a status check."""
 
-    ticket_id: str
+    ticket_id: int
     status: TicketStatus
     answer: str = Field(default="")

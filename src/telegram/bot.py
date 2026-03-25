@@ -24,16 +24,12 @@ from src.utils.logging import setup_logging
 def create_bot() -> tuple[Bot, Dispatcher]:
     """Instantiate the :class:`Bot` and :class:`Dispatcher`, wire all handlers.
 
-    Dependencies (:class:`SupportAgent` and :class:`ContextManager`) are
-    injected into the Dispatcher's workflow data so that handler functions
-    receive them as typed parameters.
+    Dependencies are injected into the Dispatcher's workflow data so that
+    handler functions receive them as typed parameters.
 
     Returns:
         A ``(bot, dp)`` tuple ready for long-polling or webhook mode.
     """
-    from src.escalation.ticket_client import TicketAPIClient
-    from src.escalation.ticket_store import TicketStore
-
     settings = get_settings()
 
     bot = Bot(
@@ -43,18 +39,12 @@ def create_bot() -> tuple[Bot, Dispatcher]:
 
     dp = Dispatcher()
 
-    # --- Escalation components ----------------------------------------------
-    ticket_client = TicketAPIClient()
-    ticket_store = TicketStore()
-
-    # --- Dependency injection via Dispatcher workflow data ------------------
-    agent = create_support_agent(ticket_client=ticket_client, ticket_store=ticket_store)
+    # --- Core agent (no more ticket_client/ticket_store) ----------------------
+    agent = create_support_agent()
     context_manager = ContextManager()
 
     dp["agent"] = agent
     dp["context_manager"] = context_manager
-    dp["ticket_store"] = ticket_store
-    dp["ticket_client"] = ticket_client
 
     # --- Register routers ---------------------------------------------------
     dp.include_router(message_router)
@@ -64,10 +54,10 @@ def create_bot() -> tuple[Bot, Dispatcher]:
 
 
 async def _init_database() -> None:
-    """Create database tables if PostgreSQL is configured."""
+    """Create database tables (PostgreSQL required for Zendesk sync)."""
     settings = get_settings()
     if not settings.database_url:
-        logger.info("DATABASE_URL not set — using JSON/in-memory fallback")
+        logger.warning("DATABASE_URL not set — Zendesk sync will not work")
         return
     from src.database.engine import get_engine
     from src.database.models import Base
@@ -78,39 +68,71 @@ async def _init_database() -> None:
     logger.info("Database tables ensured ✓")
 
 
+async def _init_zendesk_services(bot: Bot, dp: Dispatcher) -> None:
+    """Initialize Zendesk sync services and inject into dispatcher."""
+    settings = get_settings()
+    if not settings.database_url:
+        logger.warning("Zendesk sync disabled — no DATABASE_URL")
+        return
+
+    from src.agent.thread_router import ThreadRouter
+    from src.agent.ticket_summarizer import TicketSummarizer
+    from src.embeddings.gemini_embedder import GeminiEmbedder
+    from src.escalation.sync_service import ZendeskSyncService
+    from src.escalation.ticket_client import ZendeskTicketClient
+    from src.escalation.ticket_store import ConversationThreadStore
+    from src.escalation.webhook_handler import ZendeskWebhookHandler
+    from src.memory.approved_memory import ApprovedMemory
+    from src.vector_db.qdrant_client import get_qdrant_client
+
+    zendesk_client = ZendeskTicketClient()
+    thread_store = ConversationThreadStore(zendesk_client=zendesk_client)
+    thread_router = ThreadRouter()
+    ticket_summarizer = TicketSummarizer()
+
+    sync_service = ZendeskSyncService(
+        zendesk_client=zendesk_client,
+        thread_store=thread_store,
+        thread_router=thread_router,
+    )
+
+    # Approved memory for storing resolved Q&A
+    embedder = GeminiEmbedder()
+    qdrant = get_qdrant_client()
+    approved_memory = ApprovedMemory(embedder=embedder, qdrant=qdrant)
+
+    webhook_handler = ZendeskWebhookHandler(
+        bot=bot,
+        thread_store=thread_store,
+        ticket_summarizer=ticket_summarizer,
+        approved_memory=approved_memory,
+    )
+
+    # Inject into dispatcher for handler access
+    dp["sync_service"] = sync_service
+
+    # Register webhook handler with FastAPI
+    from src.api.app import set_webhook_handler
+
+    set_webhook_handler(webhook_handler)
+
+    logger.info("Zendesk sync services initialized ✓")
+
+
 async def run_bot() -> None:
     """Start the bot in long-polling or webhook mode based on settings."""
-    from src.escalation.poller import TicketPoller
-
     setup_logging()
     settings = get_settings()
 
-    # --- Ensure DB tables exist (no-op if DATABASE_URL is empty) ----------
+    # --- Ensure DB tables exist -----------------------------------------------
     await _init_database()
 
     bot, dp = create_bot()
 
-    # --- Hydrate ticket store from DB if available ------------------------
-    ticket_store = dp["ticket_store"]
-    await ticket_store.init_from_db()
+    # --- Initialize Zendesk sync services ------------------------------------
+    await _init_zendesk_services(bot, dp)
 
-    # --- Start the ticket poller as a background task -----------------------
-    from src.embeddings.gemini_embedder import GeminiEmbedder
-    from src.memory.approved_memory import ApprovedMemory
-    from src.vector_db.qdrant_client import get_qdrant_client
-
-    ticket_client = dp["ticket_client"]
-    approved_memory = ApprovedMemory(embedder=GeminiEmbedder(), qdrant=get_qdrant_client())
-    poller = TicketPoller(
-        store=ticket_store,
-        client=ticket_client,
-        bot=bot,
-        approved_memory=approved_memory,
-    )
-    asyncio.create_task(poller.run(), name="ticket_poller")
-    logger.info("TicketPoller background task started")
-
-    # --- Start the scheduled Zendesk sync task ------------------------------
+    # --- Start the scheduled Zendesk article sync task -----------------------
     if settings.zendesk_sync_interval_hours > 0:
         asyncio.create_task(
             _run_zendesk_sync(settings.zendesk_sync_interval_hours),
@@ -118,7 +140,7 @@ async def run_bot() -> None:
         )
         logger.info("Zendesk sync scheduled every {} hour(s)", settings.zendesk_sync_interval_hours)
 
-    # --- Start FastAPI health/metrics server as background task ---------------
+    # --- Start FastAPI health/metrics/webhook server -------------------------
     asyncio.create_task(_run_api_server(), name="api_server")
 
     if settings.telegram_webhook_url:
@@ -128,7 +150,7 @@ async def run_bot() -> None:
 
 
 async def _run_api_server(port: int = 8000) -> None:
-    """Run the FastAPI health/metrics server in the background."""
+    """Run the FastAPI server (health, metrics, Zendesk webhook) in the background."""
     import uvicorn
 
     from src.api.app import app as fastapi_app
@@ -184,29 +206,16 @@ async def _run_polling(bot: Bot, dp: Dispatcher) -> None:
 
 
 async def _run_webhook(bot: Bot, dp: Dispatcher, webhook_url: str) -> None:
-    """Run the bot in webhook mode and optionally expose the ticket callback endpoint.
-
-    The ticket-callback aiohttp app is mounted on the same server if
-    ``ticket_callback_mode = webhook``.
-    """
+    """Run the bot in Telegram webhook mode."""
     from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
     from aiohttp import web
 
-    settings = get_settings()
     telegram_webhook_path = "/webhook"
 
     await bot.set_webhook(f"{webhook_url}{telegram_webhook_path}")
     logger.info("Telegram webhook set to {}{}", webhook_url, telegram_webhook_path)
 
     app = web.Application()
-
-    if settings.ticket_callback_mode == "webhook":
-        from src.telegram.handlers.webhook_handler import WEBHOOK_PATH, build_webhook_app
-
-        ticket_app = build_webhook_app(bot)
-        app.add_subapp("/tickets", ticket_app)
-        logger.info("Ticket callback endpoint mounted at /tickets{}", WEBHOOK_PATH)
-
     SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path=telegram_webhook_path)
     setup_application(app, dp, bot=bot)
 

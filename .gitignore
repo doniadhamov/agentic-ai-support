@@ -59,3 +59,6 @@ ticket_store.json
 
 # Qdrant local data (if running without Docker)
 qdrant_storage/
+
+# Telegram chat to learn how users ask questions
+.telegram_chat_history/

@@ -103,7 +103,7 @@ async def test_store_payload_contains_text_field(
         question="How do I add a driver?",
         answer="Navigate to Fleet > Drivers > Add.",
         language="en",
-        ticket_id="TKT-001",
+        ticket_id=1001,
         group_id=12345,
     )
     await approved_memory.store(approved)
@@ -116,7 +116,7 @@ async def test_store_payload_contains_text_field(
     assert "How do I add a driver?" in payload["text"]
     assert "Navigate to Fleet" in payload["text"]
     assert payload["language"] == "en"
-    assert payload["ticket_id"] == "TKT-001"
+    assert payload["ticket_id"] == 1001
     assert payload["group_id"] == 12345
     assert payload["article_title"] == "Approved Answer"
 
