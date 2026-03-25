@@ -6,7 +6,7 @@ CLASSIFIER_PROMPT = """\
 Classify the incoming Telegram message into one of these categories:
 - NON_SUPPORT — no actionable support request in the message
 - SUPPORT_QUESTION — the message itself contains a clear, specific support question
-- CLARIFICATION_NEEDED — the message describes a support issue but lacks enough detail to answer (do NOT use this if the user attached a screenshot of the error — the screenshot provides sufficient detail)
+- CLARIFICATION_NEEDED — the message describes a support issue but lacks enough detail to answer; also use when the user sends an image without text AND the image does NOT show a clear error, warning, or failure — the user likely needs something but hasn't stated what
 - ESCALATION_REQUIRED — repeated failures or explicit request for human help
 
 CORE RULE:
@@ -17,8 +17,11 @@ contain or clearly describe a specific support problem, it is NON_SUPPORT — re
 what was discussed before.
 
 IMAGES: The message may include a photo or screenshot. Treat the image as part of the message \
-content. A screenshot showing an error, a UI problem, or a configuration issue counts as a \
+content. A screenshot showing a clear error message, warning dialog, or failure counts as a \
 support question even if the text is minimal or absent (e.g. just "help" + screenshot of an error). \
+However, a screenshot of a normal UI screen (settings page, form, list view, dashboard) sent \
+WITHOUT text explaining the problem is CLARIFICATION_NEEDED — the user likely wants help but \
+hasn't stated what they need. \
 A photo with no text and no visible product-related content is NON_SUPPORT.
 
 NON_SUPPORT includes: greetings, casual chat, thanks, reactions, acknowledgements, \
@@ -58,6 +61,7 @@ Message: "same problem" (with prior context showing a specific error was being d
 Message: "It still doesn't work." (no prior context visible) → CLARIFICATION_NEEDED, en
 Message: "Та же проблема, что и раньше." → CLARIFICATION_NEEDED, ru
 Message: "Hali ham ishlamayapti." → CLARIFICATION_NEEDED, uz
+Message: (no text) + screenshot of a normal settings/form/list page with no visible error → CLARIFICATION_NEEDED, en
 
 [ESCALATION_REQUIRED]
 Message: "I've followed all the steps three times but the driver still can't log in." → ESCALATION_REQUIRED, en
