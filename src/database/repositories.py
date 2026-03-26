@@ -289,6 +289,24 @@ async def get_recent_messages(chat_id: int, limit: int = 20) -> list[dict]:
     ]
 
 
+async def get_root_message_id(zendesk_ticket_id: int, chat_id: int) -> int | None:
+    """Return the Telegram message_id of the root message for a ticket, or None."""
+    factory = get_session_factory()
+    async with factory() as session:
+        stmt = (
+            select(MessageRow.message_id)
+            .where(
+                MessageRow.zendesk_ticket_id == zendesk_ticket_id,
+                MessageRow.chat_id == chat_id,
+                MessageRow.link_type == "root",
+            )
+            .order_by(MessageRow.created_at)
+            .limit(1)
+        )
+        result = await session.execute(stmt)
+        return result.scalar_one_or_none()
+
+
 async def get_messages_by_ticket_id(zendesk_ticket_id: int) -> list[dict]:
     """Return all messages linked to a Zendesk ticket, ordered oldest-first."""
     factory = get_session_factory()

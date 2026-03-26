@@ -9,7 +9,7 @@ from loguru import logger
 
 from src.agent.ticket_summarizer import TicketSummarizer
 from src.config.settings import get_settings
-from src.database.repositories import get_messages_by_ticket_id, save_message
+from src.database.repositories import get_messages_by_ticket_id, get_root_message_id, save_message
 from src.escalation.ticket_store import ConversationThreadStore
 from src.memory.approved_memory import ApprovedMemory
 from src.memory.memory_schemas import ApprovedAnswer
@@ -130,10 +130,18 @@ class ZendeskWebhookHandler:
 
         group_id = thread.group_id
 
-        # Format and send to Telegram
-        telegram_text = f"💬 *{author_name}* (Zendesk #{ticket_id}):\n\n{body}"
+        # Find the original user message to reply to
+        reply_to = await get_root_message_id(ticket_id_int, group_id)
+
+        # Format and send to Telegram (plain text to avoid MarkdownV2 escaping issues)
+        telegram_text = f"🎫 Ticket #{ticket_id}\n💬 Agent: {author_name}:\n\n{body}"
         try:
-            sent_msg = await self._bot.send_message(chat_id=group_id, text=telegram_text)
+            sent_msg = await self._bot.send_message(
+                chat_id=group_id,
+                text=telegram_text,
+                parse_mode=None,
+                reply_to_message_id=reply_to,
+            )
             logger.info(
                 "Webhook: delivered agent comment to Telegram group={} ticket={} msg_id={}",
                 group_id,
