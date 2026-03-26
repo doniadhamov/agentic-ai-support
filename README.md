@@ -179,7 +179,7 @@ Set `ZENDESK_BOT_USER_ID` in `.env` to the bot's Zendesk user ID so it can filte
 | `MAX_VOICE_DURATION_SECONDS` | | `120` | Max voice message duration to transcribe |
 | `TELEGRAM_WEBHOOK_URL` | | `` | Webhook base URL (empty = long-polling) |
 | `ADMIN_PASSWORD` | | `` | Admin dashboard password (empty = no auth) |
-| `ALLOWED_GROUPS_FILE` | | `data/allowed_groups.json` | Path to group allowlist JSON |
+| `ZENDESK_TELEGRAM_CHAT_ID_FIELD_ID` | | `` | Zendesk custom field ID for Telegram chat ID |
 | `LOG_LEVEL` | | `INFO` | Logging level |
 | `LOG_FILE` | | `logs/app.log` | Log file path |
 

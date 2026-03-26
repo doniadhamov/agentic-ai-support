@@ -1,4 +1,4 @@
-"""Async repository helpers for messages, conversation threads, and tickets."""
+"""Async repository helpers for messages, threads, tickets, and identity."""
 
 from __future__ import annotations
 
@@ -8,8 +8,222 @@ from loguru import logger
 from sqlalchemy import delete, desc, select, update
 
 from src.database.engine import get_session_factory
-from src.database.models import ConversationThread, MessageRow, TicketRow
+from src.database.models import (
+    ConversationThread,
+    MessageRow,
+    TelegramGroup,
+    TelegramUser,
+    TicketRow,
+    ZendeskUser,
+)
 from src.escalation.ticket_schemas import TicketRecord, TicketStatus
+
+# ---------------------------------------------------------------------------
+# Telegram user repository
+# ---------------------------------------------------------------------------
+
+
+async def get_or_create_telegram_user(
+    telegram_user_id: int,
+    display_name: str = "",
+) -> TelegramUser:
+    """Upsert a Telegram user — create if missing, update display_name if changed."""
+    factory = get_session_factory()
+    async with factory() as session:
+        stmt = select(TelegramUser).where(
+            TelegramUser.telegram_user_id == telegram_user_id,
+        )
+        result = await session.execute(stmt)
+        user = result.scalars().first()
+
+        if user is None:
+            user = TelegramUser(
+                telegram_user_id=telegram_user_id,
+                display_name=display_name,
+            )
+            session.add(user)
+            await session.commit()
+            await session.refresh(user)
+            logger.debug("DB: created telegram_user tg_id={}", telegram_user_id)
+        elif user.display_name != display_name and display_name:
+            user.display_name = display_name
+            user.updated_at = datetime.now(tz=UTC)
+            await session.commit()
+            await session.refresh(user)
+        return user
+
+
+async def get_telegram_user(telegram_user_id: int) -> TelegramUser | None:
+    """Look up a Telegram user by their Telegram user ID."""
+    factory = get_session_factory()
+    async with factory() as session:
+        stmt = select(TelegramUser).where(
+            TelegramUser.telegram_user_id == telegram_user_id,
+        )
+        result = await session.execute(stmt)
+        return result.scalars().first()
+
+
+# ---------------------------------------------------------------------------
+# Zendesk user repository
+# ---------------------------------------------------------------------------
+
+
+async def get_zendesk_user_by_telegram_id(telegram_user_id: int) -> ZendeskUser | None:
+    """Look up a cached Zendesk user by Telegram user ID."""
+    factory = get_session_factory()
+    async with factory() as session:
+        stmt = select(ZendeskUser).where(
+            ZendeskUser.telegram_user_id == telegram_user_id,
+        )
+        result = await session.execute(stmt)
+        return result.scalars().first()
+
+
+async def save_zendesk_user(
+    zendesk_user_id: int,
+    external_id: str,
+    telegram_user_id: int | None = None,
+    zendesk_profile_id: str | None = None,
+    name: str | None = None,
+    role: str | None = None,
+) -> ZendeskUser:
+    """Insert or update a Zendesk user record."""
+    factory = get_session_factory()
+    async with factory() as session:
+        stmt = select(ZendeskUser).where(
+            ZendeskUser.zendesk_user_id == zendesk_user_id,
+        )
+        result = await session.execute(stmt)
+        user = result.scalars().first()
+
+        if user is None:
+            user = ZendeskUser(
+                zendesk_user_id=zendesk_user_id,
+                external_id=external_id,
+                telegram_user_id=telegram_user_id,
+                zendesk_profile_id=zendesk_profile_id,
+                name=name,
+                role=role,
+            )
+            session.add(user)
+            await session.commit()
+            await session.refresh(user)
+            logger.debug("DB: created zendesk_user zd_id={}", zendesk_user_id)
+        else:
+            changed = False
+            if zendesk_profile_id and user.zendesk_profile_id != zendesk_profile_id:
+                user.zendesk_profile_id = zendesk_profile_id
+                changed = True
+            if name and user.name != name:
+                user.name = name
+                changed = True
+            if telegram_user_id and user.telegram_user_id != telegram_user_id:
+                user.telegram_user_id = telegram_user_id
+                changed = True
+            if changed:
+                user.updated_at = datetime.now(tz=UTC)
+                await session.commit()
+                await session.refresh(user)
+        return user
+
+
+async def update_zendesk_user_name(zendesk_user_id: int, name: str) -> None:
+    """Update the cached name for a Zendesk user."""
+    factory = get_session_factory()
+    async with factory() as session:
+        stmt = (
+            update(ZendeskUser)
+            .where(ZendeskUser.zendesk_user_id == zendesk_user_id)
+            .values(name=name, updated_at=datetime.now(tz=UTC))
+        )
+        await session.execute(stmt)
+        await session.commit()
+
+
+# ---------------------------------------------------------------------------
+# Telegram group repository
+# ---------------------------------------------------------------------------
+
+
+async def get_or_create_telegram_group(
+    telegram_chat_id: int,
+    title: str | None = None,
+) -> TelegramGroup:
+    """Upsert a Telegram group — create if missing, update title if changed."""
+    factory = get_session_factory()
+    async with factory() as session:
+        stmt = select(TelegramGroup).where(
+            TelegramGroup.telegram_chat_id == telegram_chat_id,
+        )
+        result = await session.execute(stmt)
+        group = result.scalars().first()
+
+        if group is None:
+            group = TelegramGroup(
+                telegram_chat_id=telegram_chat_id,
+                title=title,
+            )
+            session.add(group)
+            await session.commit()
+            await session.refresh(group)
+            logger.debug("DB: created telegram_group chat_id={}", telegram_chat_id)
+        elif title and group.title != title:
+            group.title = title
+            group.updated_at = datetime.now(tz=UTC)
+            await session.commit()
+            await session.refresh(group)
+        return group
+
+
+async def get_telegram_group(telegram_chat_id: int) -> TelegramGroup | None:
+    """Look up a Telegram group by chat ID."""
+    factory = get_session_factory()
+    async with factory() as session:
+        stmt = select(TelegramGroup).where(
+            TelegramGroup.telegram_chat_id == telegram_chat_id,
+        )
+        result = await session.execute(stmt)
+        return result.scalars().first()
+
+
+async def get_all_telegram_groups() -> list[TelegramGroup]:
+    """Return all Telegram groups (for admin dashboard)."""
+    factory = get_session_factory()
+    async with factory() as session:
+        stmt = select(TelegramGroup).order_by(TelegramGroup.created_at)
+        result = await session.execute(stmt)
+        return list(result.scalars().all())
+
+
+async def set_group_active(telegram_chat_id: int, active: bool) -> None:
+    """Set the active flag on a Telegram group."""
+    factory = get_session_factory()
+    async with factory() as session:
+        stmt = (
+            update(TelegramGroup)
+            .where(TelegramGroup.telegram_chat_id == telegram_chat_id)
+            .values(active=active, updated_at=datetime.now(tz=UTC))
+        )
+        await session.execute(stmt)
+        await session.commit()
+
+
+async def add_telegram_group(telegram_chat_id: int, title: str | None = None) -> TelegramGroup:
+    """Add a new Telegram group (admin dashboard). Returns the created group."""
+    return await get_or_create_telegram_group(telegram_chat_id, title)
+
+
+async def remove_telegram_group(telegram_chat_id: int) -> None:
+    """Delete a Telegram group from the DB."""
+    factory = get_session_factory()
+    async with factory() as session:
+        stmt = delete(TelegramGroup).where(
+            TelegramGroup.telegram_chat_id == telegram_chat_id,
+        )
+        await session.execute(stmt)
+        await session.commit()
+
 
 # ---------------------------------------------------------------------------
 # Message repository
@@ -26,6 +240,7 @@ async def save_message(
     reply_to_message_id: int | None = None,
     zendesk_ticket_id: int | None = None,
     zendesk_comment_id: int | None = None,
+    link_type: str | None = None,
 ) -> None:
     """Insert a message row."""
     factory = get_session_factory()
@@ -41,6 +256,7 @@ async def save_message(
                 reply_to_message_id=reply_to_message_id,
                 zendesk_ticket_id=zendesk_ticket_id,
                 zendesk_comment_id=zendesk_comment_id,
+                link_type=link_type,
                 created_at=datetime.now(tz=UTC),
             )
         )
@@ -90,20 +306,24 @@ async def update_message_zendesk_ids(
     message_id: int,
     zendesk_ticket_id: int,
     zendesk_comment_id: int | None = None,
+    link_type: str | None = None,
 ) -> None:
-    """Set Zendesk ticket/comment IDs on an existing message row."""
+    """Set Zendesk ticket/comment IDs and link_type on an existing message row."""
     factory = get_session_factory()
     async with factory() as session:
+        values: dict = {
+            "zendesk_ticket_id": zendesk_ticket_id,
+            "zendesk_comment_id": zendesk_comment_id,
+        }
+        if link_type is not None:
+            values["link_type"] = link_type
         stmt = (
             update(MessageRow)
             .where(
                 MessageRow.chat_id == chat_id,
                 MessageRow.message_id == message_id,
             )
-            .values(
-                zendesk_ticket_id=zendesk_ticket_id,
-                zendesk_comment_id=zendesk_comment_id,
-            )
+            .values(**values)
         )
         await session.execute(stmt)
         await session.commit()
@@ -164,7 +384,9 @@ async def create_thread(
         await session.refresh(thread)
         logger.info(
             "DB: created thread id={} group={} ticket={}",
-            thread.id, group_id, zendesk_ticket_id,
+            thread.id,
+            group_id,
+            zendesk_ticket_id,
         )
         return thread
 

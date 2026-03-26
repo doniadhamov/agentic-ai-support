@@ -103,7 +103,12 @@ def _render_collection(collection: str) -> None:
         sync_col1, sync_col2, sync_col3 = st.columns([2, 2, 3])
 
         with sync_col1:
-            if st.button("⚡ Delta Sync (24h)", type="primary", use_container_width=True, key=f"delta_{collection}"):
+            if st.button(
+                "⚡ Delta Sync (24h)",
+                type="primary",
+                use_container_width=True,
+                key=f"delta_{collection}",
+            ):
                 with st.spinner("Running delta sync..."):
                     try:
                         from src.embeddings.gemini_embedder import GeminiEmbedder
@@ -132,12 +137,19 @@ def _render_collection(collection: str) -> None:
                         st.error(f"Sync failed: {exc}")
 
         with sync_col2:
-            if st.button("🔃 Full Re-ingest", type="secondary", use_container_width=True, key=f"full_{collection}"):
+            if st.button(
+                "🔃 Full Re-ingest",
+                type="secondary",
+                use_container_width=True,
+                key=f"full_{collection}",
+            ):
                 st.session_state[f"show_full_confirm_{collection}"] = True
 
         with sync_col3:
             if st.session_state.get(f"show_full_confirm_{collection}"):
-                st.warning("This will re-ingest all Zendesk articles. This may take several minutes.")
+                st.warning(
+                    "This will re-ingest all Zendesk articles. This may take several minutes."
+                )
                 confirm_col1, confirm_col2 = st.columns(2)
                 with confirm_col1:
                     if st.button("✅ Yes, proceed", key=f"confirm_yes_{collection}"):
@@ -270,12 +282,15 @@ def _render_collection(collection: str) -> None:
                 label_visibility="collapsed",
             )
         with del_col2:
-            if st.button(
-                "Delete Point",
-                type="secondary",
-                key=f"delete_point_{collection}",
-                use_container_width=True,
-            ) and point_id_to_delete:
+            if (
+                st.button(
+                    "Delete Point",
+                    type="secondary",
+                    key=f"delete_point_{collection}",
+                    use_container_width=True,
+                )
+                and point_id_to_delete
+            ):
                 try:
                     run_async(qdrant.delete_points_by_ids(collection, [point_id_to_delete]))
                     st.success(f"Deleted point `{point_id_to_delete}`")
@@ -293,7 +308,4 @@ with tab_memory:
 # --- Sidebar ---
 with st.sidebar:
     st.markdown("---")
-    st.markdown(
-        "**DataTruck Admin** v1.0\n\n"
-        "AI-powered support bot management console."
-    )
+    st.markdown("**DataTruck Admin** v1.0\n\nAI-powered support bot management console.")

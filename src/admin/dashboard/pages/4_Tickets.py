@@ -84,7 +84,9 @@ def _load_threads() -> list[dict]:
                         "status": t.status,
                         "created_at": str(t.created_at)[:19] if t.created_at else "—",
                         "closed_at": str(t.closed_at)[:19] if t.closed_at else "—",
-                        "last_message_at": str(t.last_message_at)[:19] if t.last_message_at else "—",
+                        "last_message_at": str(t.last_message_at)[:19]
+                        if t.last_message_at
+                        else "—",
                     }
                     for t in threads
                 ]
@@ -98,7 +100,9 @@ def _load_threads() -> list[dict]:
 threads = _load_threads()
 
 if not threads:
-    st.info("No conversation threads yet. Threads will appear here as messages are synced to Zendesk.")
+    st.info(
+        "No conversation threads yet. Threads will appear here as messages are synced to Zendesk."
+    )
     st.stop()
 
 # --- Status counts ---
@@ -215,9 +219,9 @@ else:
             # Header row
             zendesk_link = f"https://{zendesk_subdomain}/agent/tickets/{ticket_id}"
             st.markdown(
-                f'**Thread #{selected_thread_id}** &nbsp; '
+                f"**Thread #{selected_thread_id}** &nbsp; "
                 f'<span class="status-pill {pill_class}">{thread_data.get("status", "unknown")}</span>'
-                f' &nbsp; | &nbsp; '
+                f" &nbsp; | &nbsp; "
                 f'<a href="{zendesk_link}" target="_blank">View in Zendesk →</a>',
                 unsafe_allow_html=True,
             )
@@ -249,7 +253,4 @@ else:
 # --- Sidebar ---
 with st.sidebar:
     st.markdown("---")
-    st.markdown(
-        "**DataTruck Admin** v1.0\n\n"
-        "AI-powered support bot management console."
-    )
+    st.markdown("**DataTruck Admin** v1.0\n\nAI-powered support bot management console.")

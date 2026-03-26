@@ -60,6 +60,10 @@ class Settings(BaseSettings):
         default=0,
         description="Zendesk user ID of the bot, used to filter own comments in webhook",
     )
+    zendesk_telegram_chat_id_field_id: str = Field(
+        default="",
+        description="Zendesk custom field ID for storing Telegram chat ID on tickets",
+    )
 
     # --- Agent Behaviour ---
     support_min_confidence_score: float = Field(default=0.70, ge=0.0, le=1.0)
@@ -75,9 +79,6 @@ class Settings(BaseSettings):
 
     # --- Admin Dashboard ---
     admin_password: str = Field(default="", description="Dashboard password; empty = no auth")
-    allowed_groups_file: str = Field(
-        default="data/allowed_groups.json", description="Path to group allowlist JSON"
-    )
 
     # --- Logging ---
     log_level: str = Field(default="INFO")

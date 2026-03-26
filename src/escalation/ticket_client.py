@@ -39,20 +39,29 @@ class ZendeskTicketClient:
 
     @async_retry(max_attempts=3, min_wait=1.0, max_wait=10.0, exceptions=(httpx.HTTPError,))
     async def create_ticket(
-        self, payload: ZendeskTicketCreate,
+        self,
+        payload: ZendeskTicketCreate,
     ) -> int:
         """Create a new Zendesk ticket.
 
         Returns:
             The Zendesk ticket ID (integer).
         """
-        body = {
-            "ticket": {
-                "subject": payload.subject,
-                "comment": {"body": payload.body},
-                "tags": payload.tags,
-            },
+        comment_dict: dict = {"body": payload.body}
+        if payload.author_id:
+            comment_dict["author_id"] = payload.author_id
+
+        ticket_dict: dict = {
+            "subject": payload.subject,
+            "comment": comment_dict,
+            "tags": payload.tags,
         }
+        if payload.requester_id:
+            ticket_dict["requester_id"] = payload.requester_id
+        if payload.custom_fields:
+            ticket_dict["custom_fields"] = payload.custom_fields
+
+        body = {"ticket": ticket_dict}
         async with self._client() as client:
             response = await client.post("/tickets.json", json=body)
             response.raise_for_status()
@@ -67,20 +76,30 @@ class ZendeskTicketClient:
         self,
         ticket_id: int,
         comment: ZendeskComment,
+        tags: list[str] | None = None,
+        custom_fields: list[dict] | None = None,
     ) -> int:
         """Add a comment to an existing Zendesk ticket.
 
         Returns:
             The Zendesk comment ID (integer).
         """
-        comment_body: dict = {
+        comment_dict: dict = {
             "body": comment.body,
             "public": comment.public,
         }
+        if comment.author_id:
+            comment_dict["author_id"] = comment.author_id
         if comment.attachment_tokens:
-            comment_body["uploads"] = comment.attachment_tokens
+            comment_dict["uploads"] = comment.attachment_tokens
 
-        body = {"ticket": {"comment": comment_body}}
+        ticket_dict: dict = {"comment": comment_dict}
+        if tags:
+            ticket_dict["tags"] = tags
+        if custom_fields:
+            ticket_dict["custom_fields"] = custom_fields
+
+        body = {"ticket": ticket_dict}
         async with self._client() as client:
             response = await client.put(f"/tickets/{ticket_id}.json", json=body)
             response.raise_for_status()
@@ -148,3 +167,63 @@ class ZendeskTicketClient:
             response = await client.get(f"/tickets/{ticket_id}/comments.json")
             response.raise_for_status()
             return response.json().get("comments", [])
+
+    @async_retry(max_attempts=3, min_wait=1.0, max_wait=10.0, exceptions=(httpx.HTTPError,))
+    async def create_or_update_profile(
+        self,
+        name: str,
+        identifier_value: str,
+    ) -> dict:
+        """Create or update a Zendesk user profile via the Profiles API.
+
+        Uses PUT /api/v2/user_profiles?identifier=telegram:customer:external_id:{identifier_value}
+
+        Returns:
+            The profile dict from the Zendesk API response.
+        """
+        identifier = f"telegram:customer:external_id:{identifier_value}"
+        body = {
+            "profile": {
+                "name": name,
+                "identifiers": [
+                    {"type": "external_id", "value": identifier_value},
+                ],
+            },
+        }
+        async with self._client() as client:
+            response = await client.put(
+                "/user_profiles",
+                params={"identifier": identifier},
+                json=body,
+            )
+            response.raise_for_status()
+            data = response.json()
+
+        profile = data.get("profile", {})
+        logger.info(
+            "Zendesk: upserted profile id={} user_id={} for {}",
+            profile.get("id"),
+            profile.get("user_id"),
+            identifier_value,
+        )
+        return profile
+
+    @async_retry(max_attempts=3, min_wait=1.0, max_wait=10.0, exceptions=(httpx.HTTPError,))
+    async def get_profile(self, identifier_value: str) -> dict | None:
+        """Fetch a Zendesk user profile by external_id.
+
+        Returns:
+            The profile dict, or None if not found.
+        """
+        identifier = f"telegram:customer:external_id:{identifier_value}"
+        async with self._client() as client:
+            response = await client.get(
+                "/user_profiles",
+                params={"identifier": identifier},
+            )
+            if response.status_code == 404:
+                return None
+            response.raise_for_status()
+            data = response.json()
+
+        return data.get("profile")

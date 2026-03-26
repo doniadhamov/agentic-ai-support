@@ -8,7 +8,6 @@ from pathlib import Path
 import streamlit as st
 
 from src.admin.dashboard.utils import run_async
-from src.admin.group_store import GroupStore
 from src.config.settings import get_settings
 
 # ---------------------------------------------------------------------------
@@ -250,8 +249,10 @@ def main() -> None:
     )
 
     # --- Quick stats row ---
-    group_store = GroupStore()
-    groups = group_store.list_groups()
+    from src.database.repositories import get_all_telegram_groups
+
+    all_groups = run_async(get_all_telegram_groups())
+    groups = [g for g in all_groups if g.active]
     ticket_counts = _load_ticket_counts()
 
     # Try to get Qdrant point counts and distinct article count
@@ -354,7 +355,7 @@ def main() -> None:
                 <p>View escalated support questions and their resolution status.</p>
                 <div class="card-stat">
                     {badge}
-                    &nbsp; {ticket_counts['total']} total
+                    &nbsp; {ticket_counts["total"]} total
                 </div>
             </div>""",
             unsafe_allow_html=True,
@@ -363,10 +364,7 @@ def main() -> None:
     # --- Sidebar branding ---
     with st.sidebar:
         st.markdown("---")
-        st.markdown(
-            "**DataTruck Admin** v1.0\n\n"
-            "AI-powered support bot management console."
-        )
+        st.markdown("**DataTruck Admin** v1.0\n\nAI-powered support bot management console.")
 
 
 if __name__ == "__main__":

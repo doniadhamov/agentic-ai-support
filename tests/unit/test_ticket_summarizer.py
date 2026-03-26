@@ -79,5 +79,7 @@ async def test_summarize_handles_empty_tags() -> None:
     response = _mock_tool_response(question="Q", answer="A")
     summarizer = _make_summarizer(response)
 
-    result = await summarizer.summarize(messages=[{"username": "User", "text": "Help", "source": "telegram"}])
+    result = await summarizer.summarize(
+        messages=[{"username": "User", "text": "Help", "source": "telegram"}]
+    )
     assert result["tags"] == []

@@ -32,6 +32,10 @@ class ConversationThreadStore:
         user_id: int,
         group_name: str,
         subject: str,
+        body: str | None = None,
+        requester_id: int | None = None,
+        author_id: int | None = None,
+        custom_fields: list[dict] | None = None,
     ) -> tuple[int, bool]:
         """Get the active thread or create a new one with a Zendesk ticket.
 
@@ -46,8 +50,11 @@ class ConversationThreadStore:
         ticket_id = await self._zendesk.create_ticket(
             ZendeskTicketCreate(
                 subject=subject,
-                body=f"New conversation from Telegram group: {group_name}",
-                tags=["telegram", "ai-support-bot"],
+                body=body or f"New conversation from Telegram group: {group_name}",
+                requester_id=requester_id,
+                author_id=author_id,
+                tags=["source_telegram"],
+                custom_fields=custom_fields,
             )
         )
 
@@ -60,7 +67,9 @@ class ConversationThreadStore:
 
         logger.info(
             "ConversationThreadStore: created thread group={} user={} ticket={}",
-            group_id, user_id, ticket_id,
+            group_id,
+            user_id,
+            ticket_id,
         )
         return ticket_id, True
 
@@ -81,7 +90,8 @@ class ConversationThreadStore:
         await close_thread(thread.id)
         logger.info(
             "ConversationThreadStore: closed thread id={} ticket={}",
-            thread.id, zendesk_ticket_id,
+            thread.id,
+            zendesk_ticket_id,
         )
         return thread
 

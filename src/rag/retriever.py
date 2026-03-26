@@ -57,7 +57,10 @@ class RAGRetriever:
         article_scores: dict[int, float] = {}
         for chunk in chunks:
             if chunk.source == "docs" and chunk.article_id is not None:
-                if chunk.article_id not in article_scores or chunk.score > article_scores[chunk.article_id]:
+                if (
+                    chunk.article_id not in article_scores
+                    or chunk.score > article_scores[chunk.article_id]
+                ):
                     article_scores[chunk.article_id] = chunk.score
 
         if not article_scores:

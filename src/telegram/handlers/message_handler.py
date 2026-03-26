@@ -16,10 +16,13 @@ from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import Message
 from loguru import logger
 
-from src.admin.group_store import get_group_store
 from src.agent.agent import SupportAgent
 from src.agent.schemas import AgentInput
-from src.database.repositories import save_message
+from src.database.repositories import (
+    get_or_create_telegram_group,
+    get_or_create_telegram_user,
+    save_message,
+)
 from src.escalation.sync_service import ZendeskSyncService
 from src.telegram.context.context_manager import ContextManager
 from src.telegram.context.group_context import MessageRecord
@@ -66,15 +69,29 @@ async def handle_group_message(
         return
 
     chat_id: int = message.chat.id
-
-    # Group allowlist guard
-    group_store = get_group_store()
-    if group_store.has_groups() and not group_store.is_allowed(chat_id):
-        return
-
     user_id: int = message.from_user.id
     username: str = message.from_user.full_name or str(user_id)
     group_name: str = message.chat.title or str(chat_id)
+
+    # Upsert group in DB and check active flag
+    try:
+        group = await get_or_create_telegram_group(chat_id, title=group_name)
+        if not group.active:
+            return
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Failed to check group status for chat_id={}: {}", chat_id, exc)
+
+    # Upsert Telegram user in DB
+    try:
+        first_name = message.from_user.first_name or ""
+        last_name = message.from_user.last_name or ""
+        tg_username = message.from_user.username or ""
+        display_name = (
+            f"{first_name} {last_name}".strip() or tg_username or f"telegram_user_{user_id}"
+        )
+        await get_or_create_telegram_user(user_id, display_name=display_name)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Failed to upsert telegram_user user_id={}: {}", user_id, exc)
     log_ctx = {"group_id": chat_id, "user_id": user_id, "message_id": message.message_id}
 
     # --- Step 1: Preprocess (download media, transcribe voice, etc.) ----------
@@ -154,6 +171,9 @@ async def handle_group_message(
                 images=images or None,
                 reply_to_message_id=reply_to_msg_id,
                 conversation_context=conversation_context,
+                first_name=message.from_user.first_name,
+                last_name=message.from_user.last_name,
+                tg_username=message.from_user.username,
             )
         except Exception as exc:  # noqa: BLE001
             logger.bind(**log_ctx).warning("Zendesk sync failed: {}", exc)

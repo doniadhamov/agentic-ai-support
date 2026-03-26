@@ -32,6 +32,9 @@ def _make_message(text: str = "How do I reset?") -> MagicMock:
     msg.from_user = MagicMock()
     msg.from_user.id = 42
     msg.from_user.full_name = "Test User"
+    msg.from_user.first_name = "Test"
+    msg.from_user.last_name = "User"
+    msg.from_user.username = "testuser"
     msg.message_id = 999
     msg.reply_to_message = None
     msg.reply = AsyncMock()
@@ -64,12 +67,20 @@ def _pp(text: str = "How do I reset?") -> PreprocessedMessage:
     return PreprocessedMessage(text=text, is_supported=True)
 
 
-# All tests mock preprocess + save_message + group_store to isolate handler logic
+# All tests mock preprocess + save_message + DB repos to isolate handler logic
 _PATCHES = [
     "src.telegram.handlers.message_handler.preprocess",
     "src.telegram.handlers.message_handler.save_message",
-    "src.telegram.handlers.message_handler.get_group_store",
+    "src.telegram.handlers.message_handler.get_or_create_telegram_group",
+    "src.telegram.handlers.message_handler.get_or_create_telegram_user",
 ]
+
+
+def _mock_active_group() -> MagicMock:
+    """Return a mock TelegramGroup with active=True."""
+    group = MagicMock()
+    group.active = True
+    return group
 
 
 # ---------------------------------------------------------------------------
@@ -87,9 +98,9 @@ async def test_handler_sends_reply() -> None:
     with (
         patch(_PATCHES[0], return_value=_pp()) as _,
         patch(_PATCHES[1], new_callable=AsyncMock) as _,
-        patch(_PATCHES[2]) as mock_gs,
+        patch(_PATCHES[2], new_callable=AsyncMock, return_value=_mock_active_group()) as _,
+        patch(_PATCHES[3], new_callable=AsyncMock) as _,
     ):
-        mock_gs.return_value.has_groups.return_value = False
         await handle_group_message(msg, agent, cm)
 
     msg.reply.assert_awaited_once()
@@ -105,9 +116,9 @@ async def test_handler_no_reply_when_should_reply_false() -> None:
     with (
         patch(_PATCHES[0], return_value=_pp()) as _,
         patch(_PATCHES[1], new_callable=AsyncMock) as _,
-        patch(_PATCHES[2]) as mock_gs,
+        patch(_PATCHES[2], new_callable=AsyncMock, return_value=_mock_active_group()) as _,
+        patch(_PATCHES[3], new_callable=AsyncMock) as _,
     ):
-        mock_gs.return_value.has_groups.return_value = False
         await handle_group_message(msg, agent, cm)
 
     msg.reply.assert_not_awaited()
@@ -161,9 +172,9 @@ async def test_handler_falls_back_to_plain_text_on_parse_error() -> None:
     with (
         patch(_PATCHES[0], return_value=_pp()) as _,
         patch(_PATCHES[1], new_callable=AsyncMock) as _,
-        patch(_PATCHES[2]) as mock_gs,
+        patch(_PATCHES[2], new_callable=AsyncMock, return_value=_mock_active_group()) as _,
+        patch(_PATCHES[3], new_callable=AsyncMock) as _,
     ):
-        mock_gs.return_value.has_groups.return_value = False
         await handle_group_message(msg, agent, cm)
 
     assert msg.reply.await_count == 2
@@ -184,9 +195,9 @@ async def test_handler_reraises_non_parse_telegram_error() -> None:
     with (
         patch(_PATCHES[0], return_value=_pp()) as _,
         patch(_PATCHES[1], new_callable=AsyncMock) as _,
-        patch(_PATCHES[2]) as mock_gs,
+        patch(_PATCHES[2], new_callable=AsyncMock, return_value=_mock_active_group()) as _,
+        patch(_PATCHES[3], new_callable=AsyncMock) as _,
     ):
-        mock_gs.return_value.has_groups.return_value = False
         with pytest.raises(TelegramBadRequest):
             await handle_group_message(msg, agent, cm)
 
@@ -208,13 +219,13 @@ async def test_handler_falls_back_on_format_error() -> None:
     with (
         patch(_PATCHES[0], return_value=_pp()) as _,
         patch(_PATCHES[1], new_callable=AsyncMock) as _,
-        patch(_PATCHES[2]) as mock_gs,
+        patch(_PATCHES[2], new_callable=AsyncMock, return_value=_mock_active_group()) as _,
+        patch(_PATCHES[3], new_callable=AsyncMock) as _,
         patch(
             "src.telegram.handlers.message_handler.format_reply",
             side_effect=ValueError("format broke"),
         ),
     ):
-        mock_gs.return_value.has_groups.return_value = False
         await handle_group_message(msg, agent, cm)
 
     msg.reply.assert_awaited_once()
@@ -235,9 +246,9 @@ async def test_handler_records_message_in_context() -> None:
     with (
         patch(_PATCHES[0], return_value=_pp()) as _,
         patch(_PATCHES[1], new_callable=AsyncMock) as _,
-        patch(_PATCHES[2]) as mock_gs,
+        patch(_PATCHES[2], new_callable=AsyncMock, return_value=_mock_active_group()) as _,
+        patch(_PATCHES[3], new_callable=AsyncMock) as _,
     ):
-        mock_gs.return_value.has_groups.return_value = False
         await handle_group_message(msg, agent, cm)
 
     cm.get_or_create.assert_awaited_once_with(100)

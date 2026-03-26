@@ -78,6 +78,7 @@ async def _init_zendesk_services(bot: Bot, dp: Dispatcher) -> None:
     from src.agent.thread_router import ThreadRouter
     from src.agent.ticket_summarizer import TicketSummarizer
     from src.embeddings.gemini_embedder import GeminiEmbedder
+    from src.escalation.profile_service import ZendeskProfileService
     from src.escalation.sync_service import ZendeskSyncService
     from src.escalation.ticket_client import ZendeskTicketClient
     from src.escalation.ticket_store import ConversationThreadStore
@@ -89,11 +90,13 @@ async def _init_zendesk_services(bot: Bot, dp: Dispatcher) -> None:
     thread_store = ConversationThreadStore(zendesk_client=zendesk_client)
     thread_router = ThreadRouter()
     ticket_summarizer = TicketSummarizer()
+    profile_service = ZendeskProfileService(zendesk_client=zendesk_client)
 
     sync_service = ZendeskSyncService(
         zendesk_client=zendesk_client,
         thread_store=thread_store,
         thread_router=thread_router,
+        profile_service=profile_service,
     )
 
     # Approved memory for storing resolved Q&A

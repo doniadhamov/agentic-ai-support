@@ -24,8 +24,17 @@ class ZendeskTicketCreate(BaseModel):
 
     subject: str = Field(..., description="Ticket subject line")
     body: str = Field(..., description="First comment body (HTML or plain text)")
-    requester_name: str = Field(default="Telegram User", description="Display name for the requester")
-    tags: list[str] = Field(default_factory=lambda: ["telegram", "ai-support-bot"])
+    requester_name: str = Field(
+        default="Telegram User",
+        description="Display name for the requester",
+    )
+    requester_id: int | None = Field(default=None, description="Zendesk user ID for requester")
+    author_id: int | None = Field(default=None, description="Zendesk user ID for comment author")
+    tags: list[str] = Field(default_factory=lambda: ["source_telegram"])
+    custom_fields: list[dict] | None = Field(
+        default=None,
+        description="Zendesk custom fields for the ticket",
+    )
 
 
 class ZendeskComment(BaseModel):
@@ -33,6 +42,7 @@ class ZendeskComment(BaseModel):
 
     body: str = Field(..., description="Comment body text")
     public: bool = Field(default=True, description="Whether the comment is public")
+    author_id: int | None = Field(default=None, description="Zendesk user ID for comment author")
     attachment_tokens: list[str] = Field(
         default_factory=list,
         description="Upload tokens from the Zendesk Attachments API",

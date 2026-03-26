@@ -80,6 +80,7 @@ class ZendeskWebhookHandler:
             text=comment_body,
             source="zendesk",
             zendesk_ticket_id=ticket_id,
+            link_type="mirror",
         )
 
         # Send the agent's response to the Telegram group
@@ -90,7 +91,8 @@ class ZendeskWebhookHandler:
             )
             logger.info(
                 "Webhook: delivered agent response to group={} ticket={}",
-                group_id, ticket_id,
+                group_id,
+                ticket_id,
             )
 
             # Update the stored message with the Telegram message ID
@@ -141,5 +143,6 @@ class ZendeskWebhookHandler:
         except Exception as exc:  # noqa: BLE001
             logger.error(
                 "Webhook: failed to summarize/store ticket={} — {}",
-                ticket_id, exc,
+                ticket_id,
+                exc,
             )

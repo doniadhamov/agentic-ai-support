@@ -78,7 +78,9 @@ section[data-testid="stSidebar"] .stMarkdown p, section[data-testid="stSidebar"]
 
 # --- Page header ---
 st.title("📄 Upload Documents")
-st.caption("Ingest files into the knowledge base. Files are parsed, chunked, embedded, and indexed automatically.")
+st.caption(
+    "Ingest files into the knowledge base. Files are parsed, chunked, embedded, and indexed automatically."
+)
 
 # --- Supported formats ---
 formats_html = " ".join(
@@ -185,7 +187,4 @@ if uploaded_file is not None:
 # --- Sidebar ---
 with st.sidebar:
     st.markdown("---")
-    st.markdown(
-        "**DataTruck Admin** v1.0\n\n"
-        "AI-powered support bot management console."
-    )
+    st.markdown("**DataTruck Admin** v1.0\n\nAI-powered support bot management console.")

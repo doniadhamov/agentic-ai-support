@@ -10,7 +10,9 @@ from src.agent.schemas import ThreadRoutingAction
 from src.agent.thread_router import ThreadRouter
 
 
-def _mock_tool_response(action: str, ticket_id: int | None = None, reasoning: str = "test") -> MagicMock:
+def _mock_tool_response(
+    action: str, ticket_id: int | None = None, reasoning: str = "test"
+) -> MagicMock:
     """Build a mock Claude response with a tool_use block."""
     tool_block = MagicMock()
     tool_block.type = "tool_use"

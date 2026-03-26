@@ -35,11 +35,11 @@ src/
   ingestion/      — zendesk_client.py (read-only Help Center), article_processor.py, image_downloader.py, chunker.py, sync_manager.py, file_parser.py
   vector_db/      — qdrant_client.py, collections.py, indexer.py
   embeddings/     — gemini_embedder.py
-  escalation/     — ticket_client.py (ZendeskTicketClient), ticket_store.py (ConversationThreadStore), sync_service.py (ZendeskSyncService), webhook_handler.py (Zendesk→Telegram), ticket_schemas.py
-  database/       — engine.py, models.py (MessageRow, ConversationThread, TicketRow), repositories.py
+  escalation/     — ticket_client.py (ZendeskTicketClient), ticket_store.py (ConversationThreadStore), sync_service.py (ZendeskSyncService), webhook_handler.py (Zendesk→Telegram), ticket_schemas.py, profile_service.py (ZendeskProfileService)
+  database/       — engine.py, models.py (TelegramUser, ZendeskUser, TelegramGroup, MessageRow, ConversationThread, TicketRow), repositories.py
   api/            — app.py (FastAPI health/metrics/webhook endpoints)
   memory/         — approved_memory.py, memory_schemas.py
-  admin/          — group_store.py, file_ingest.py, schemas.py, dashboard/ (Streamlit admin UI)
+  admin/          — file_ingest.py, schemas.py, dashboard/ (Streamlit admin UI)
   utils/          — logging.py, language.py, retry.py
 scripts/          — ingest_zendesk.py, sync_zendesk.py, check_qdrant.py
 tests/            — unit/ + integration/
@@ -153,7 +153,7 @@ Open API health check: `http://localhost:8000/health`
 | `RAG_TOP_K` | Number of top chunks to retrieve from Qdrant (default: `5`) |
 | `ZENDESK_SYNC_INTERVAL_HOURS` | Hours between automatic Zendesk article sync (default: `6`, 0 = disabled) |
 | `ADMIN_PASSWORD` | Admin dashboard password (default: empty = no auth) |
-| `ALLOWED_GROUPS_FILE` | Path to group allowlist JSON (default: `data/allowed_groups.json`) |
+| `ZENDESK_TELEGRAM_CHAT_ID_FIELD_ID` | Zendesk custom field ID for storing Telegram chat ID on tickets |
 | `LOG_LEVEL` | Log level (default: `INFO`) |
 
 ## Code Conventions
@@ -169,7 +169,7 @@ Open API health check: `http://localhost:8000/health`
 
 ```
 incoming Telegram group message (text, photo, voice, audio, or image document)
-  → GroupStore.is_allowed(group_id) — skip if group not in allowlist
+  → telegram_groups.active check — skip if group is inactive in DB
   → preprocessor.py — normalize message:
        text → as-is
        photo → download largest size (up to 5 MB) → images list
@@ -187,12 +187,15 @@ incoming Telegram group message (text, photo, voice, audio, or image document)
   → retriever.py   →  top-k chunks from datatruck_docs + datatruck_memory
   → reranker.py    →  filter below SUPPORT_MIN_CONFIDENCE_SCORE
   → generator.py   →  grounded answer OR escalation decision
+  → Upsert telegram_users + telegram_groups in DB
   → ZendeskSyncService.sync_message():
+       ZendeskProfileService: resolve Telegram user → Zendesk user ID (via Profiles API, cached in zendesk_users)
        ThreadRouter (Claude Haiku) analyzes message + active tickets + conversation history
-       → route_to_existing: post comment to existing Zendesk ticket
-       → create_new: create new Zendesk ticket + post comment
+       → route_to_existing: post comment with author_id to existing Zendesk ticket
+       → create_new: create new Zendesk ticket with requester_id + author_id + custom_fields + source_telegram tag
        → skip_zendesk: skip (non-support, no active ticket)
        Upload photos/attachments to Zendesk if any
+       Set link_type on message row (root/reply)
   → if AI replies:
        Send reply to Telegram
        Post AI reply as Zendesk comment on the same ticket
@@ -242,22 +245,25 @@ Key routing rules:
 Streamlit-based admin UI at port 8501 with four pages:
 
 - **Home** — live metrics (active groups, ingested articles, memory entries, open tickets) + navigation cards
-- **Groups** — manage Telegram group allowlist (add/remove, search, runtime changes take effect within 5s)
+- **Groups** — manage Telegram groups from DB (add/remove, activate/deactivate, search)
 - **Knowledge Base** — tabbed browser for `datatruck_docs` / `datatruck_memory`; Delta Sync (24h) and Full Re-ingest buttons; auto-creates collections if missing; paginated point table; delete by UUID
 - **Upload** — ingest PDF/DOCX/TXT/MD files into `datatruck_docs` (parse → chunk → embed → index pipeline)
 - **Tickets** — conversation threads view with Zendesk ticket links, status metrics, search, and detail view
 
-Group allowlist is shared between bot and dashboard via `data/allowed_groups.json`.
-When the allowlist is empty, the bot accepts all groups (backward-compatible).
+Group management is stored in the `telegram_groups` table.
+When no active groups exist, the bot accepts all groups (backward-compatible).
 File upload uses deterministic article IDs (offset from 10,000,000) to avoid collision with Zendesk IDs.
 Full Re-ingest from the dashboard is equivalent to running `scripts/ingest_zendesk.py`.
 
 ## PostgreSQL Persistence (required)
 
 The bot requires `DATABASE_URL` for:
-- **Conversation messages** — ALL messages stored (both Telegram and Zendesk directions)
-- **Conversation threads** — maps Telegram groups to Zendesk tickets
-- **Escalation tickets** — ticket metadata and status
+- **Telegram users** (`telegram_users`) — identity entity, one per Telegram person, with cached `display_name`
+- **Zendesk users** (`zendesk_users`) — Zendesk identity linked via Profiles API, caches `zendesk_user_id` + `zendesk_profile_id`
+- **Telegram groups** (`telegram_groups`) — group metadata + `active` flag (replaces `allowed_groups.json`)
+- **Telegram messages** (`telegram_messages`) — ALL messages stored, with `link_type` (root/reply/mirror) for Zendesk tracking
+- **Conversation threads** (`conversation_threads`) — maps Telegram groups to Zendesk tickets
+- **Escalation tickets** (`tickets`) — ticket metadata and status
 
 Tables are auto-created on startup (`Base.metadata.create_all`). No migrations needed for initial setup.
 
