@@ -8,8 +8,11 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from src.agent.ticket_summarizer import TicketSummarizer
+from src.config.settings import get_settings
+from src.database.repositories import get_messages_by_ticket_id, save_message
 from src.escalation.ticket_store import ConversationThreadStore
 from src.memory.approved_memory import ApprovedMemory
+from src.memory.memory_schemas import ApprovedAnswer
 
 if TYPE_CHECKING:
     from aiogram import Bot
@@ -20,6 +23,8 @@ _SUPPORTED_EVENT_TYPES = {
 }
 
 _SOURCE_TAG = "source_telegram"
+
+_CLOSED_STATUSES = {"solved", "closed"}
 
 
 class ZendeskWebhookHandler:
@@ -47,7 +52,7 @@ class ZendeskWebhookHandler:
         Gate logic (in order):
         1. Event type must be comment_added or status_changed.
         2. Ticket must carry the ``source_telegram`` tag.
-        3. If all gates pass, log the full event JSON for now.
+        3. Dispatch to comment or status handler.
         """
         event_type = payload.get("type", "")
         detail = payload.get("detail") or {}
@@ -72,7 +77,6 @@ class ZendeskWebhookHandler:
             )
             return {"status": "ignored", "reason": "missing source_telegram tag"}
 
-        # All gates passed — log the full event
         logger.info(
             "Webhook: matched event type={} ticket={} | payload:\n{}",
             event_type,
@@ -80,4 +84,141 @@ class ZendeskWebhookHandler:
             json.dumps(payload, indent=2, ensure_ascii=False),
         )
 
+        # Dispatch by event type
+        if event_type == "zen:event-type:ticket.comment_added":
+            return await self._handle_comment_added(payload, detail, ticket_id)
+
+        if event_type == "zen:event-type:ticket.status_changed":
+            return await self._handle_status_changed(payload, detail, ticket_id)
+
         return {"status": "received", "ticket_id": ticket_id, "event_type": event_type}
+
+    # ------------------------------------------------------------------
+    # Comment added — deliver agent reply to Telegram
+    # ------------------------------------------------------------------
+
+    async def _handle_comment_added(
+        self, payload: dict, detail: dict, ticket_id: str | int
+    ) -> dict:
+        event = payload.get("event") or {}
+        comment = event.get("comment") or {}
+        body = comment.get("body", "").strip()
+        author = comment.get("author") or {}
+        author_id = str(author.get("id", ""))
+        author_name = author.get("name", "Zendesk Agent")
+
+        # Gate — skip bot's own comments to avoid echo loops
+        settings = get_settings()
+        if settings.zendesk_bot_user_id and author_id == str(settings.zendesk_bot_user_id):
+            logger.debug("Webhook: skipping bot's own comment on ticket={}", ticket_id)
+            return {"status": "ignored", "reason": "bot's own comment"}
+
+        # Gate — must have a body
+        if not body:
+            logger.debug("Webhook: skipping empty comment on ticket={}", ticket_id)
+            return {"status": "ignored", "reason": "empty comment body"}
+
+        # Look up conversation thread → Telegram group
+        ticket_id_int = int(ticket_id)
+        thread = await self._thread_store.get_thread_for_ticket(ticket_id_int)
+        if thread is None:
+            logger.warning(
+                "Webhook: no conversation thread for ticket={}, cannot deliver to Telegram",
+                ticket_id,
+            )
+            return {"status": "ignored", "reason": "no conversation thread found"}
+
+        group_id = thread.group_id
+
+        # Format and send to Telegram
+        telegram_text = f"💬 *{author_name}* (Zendesk #{ticket_id}):\n\n{body}"
+        try:
+            sent_msg = await self._bot.send_message(chat_id=group_id, text=telegram_text)
+            logger.info(
+                "Webhook: delivered agent comment to Telegram group={} ticket={} msg_id={}",
+                group_id,
+                ticket_id,
+                sent_msg.message_id,
+            )
+        except Exception as exc:
+            logger.error(
+                "Webhook: failed to send to Telegram group={} ticket={}: {}",
+                group_id,
+                ticket_id,
+                exc,
+            )
+            return {"status": "error", "reason": f"telegram send failed: {exc}"}
+
+        # Persist the agent message in DB
+        try:
+            await save_message(
+                chat_id=group_id,
+                message_id=sent_msg.message_id,
+                user_id=0,
+                username=author_name,
+                text=body,
+                source="zendesk",
+                zendesk_ticket_id=ticket_id_int,
+                link_type="mirror",
+            )
+        except Exception as exc:
+            logger.error("Webhook: failed to save message in DB: {}", exc)
+
+        return {"status": "delivered", "ticket_id": ticket_id, "group_id": group_id}
+
+    # ------------------------------------------------------------------
+    # Status changed — close thread + summarize on solved/closed
+    # ------------------------------------------------------------------
+
+    async def _handle_status_changed(
+        self, payload: dict, detail: dict, ticket_id: str | int
+    ) -> dict:
+        new_status = str(detail.get("status", "")).lower()
+
+        if new_status not in _CLOSED_STATUSES:
+            logger.debug(
+                "Webhook: ticket={} status changed to {} (not closed), ignoring",
+                ticket_id,
+                new_status,
+            )
+            return {"status": "received", "ticket_id": ticket_id, "event_type": "status_changed"}
+
+        ticket_id_int = int(ticket_id)
+
+        # Close the conversation thread
+        thread = await self._thread_store.close_thread_for_ticket(ticket_id_int)
+        if thread is None:
+            logger.warning("Webhook: no thread to close for ticket={}", ticket_id)
+            return {"status": "received", "ticket_id": ticket_id, "event_type": "status_changed"}
+
+        # Summarize and store in memory
+        if self._memory is not None:
+            try:
+                messages = await get_messages_by_ticket_id(ticket_id_int)
+                if messages:
+                    summary = await self._summarizer.summarize(messages)
+                    await self._memory.store(
+                        ApprovedAnswer(
+                            question=summary["question"],
+                            answer=summary["answer"],
+                            ticket_id=ticket_id_int,
+                            group_id=thread.group_id,
+                        )
+                    )
+                    logger.info(
+                        "Webhook: stored memory for closed ticket={} q={!r}",
+                        ticket_id,
+                        summary["question"][:60],
+                    )
+            except Exception as exc:
+                logger.error(
+                    "Webhook: failed to summarize/store memory for ticket={}: {}",
+                    ticket_id,
+                    exc,
+                )
+
+        return {
+            "status": "closed",
+            "ticket_id": ticket_id,
+            "event_type": "status_changed",
+        }
