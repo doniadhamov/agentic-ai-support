@@ -150,7 +150,7 @@ async def test_process_clarification_needed_no_retrieval() -> None:
 
 @pytest.mark.asyncio
 async def test_process_escalation_detected() -> None:
-    """When generator flags escalation, the output should reflect it."""
+    """When generator flags escalation, bot should not reply in Telegram."""
     agent = _make_agent(
         category=MessageCategory.SUPPORT_QUESTION,
         needs_escalation=True,
@@ -159,6 +159,7 @@ async def test_process_escalation_detected() -> None:
 
     assert output.needs_escalation is True
     assert output.category == MessageCategory.ESCALATION_REQUIRED
+    assert output.should_reply is False
 
 
 # ---------------------------------------------------------------------------

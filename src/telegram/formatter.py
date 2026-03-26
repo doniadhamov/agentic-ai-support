@@ -248,16 +248,6 @@ def _strip_screenshots(text: str) -> str:
 def _build_text(output: AgentOutput) -> str:
     """Assemble the raw (pre-truncation) reply text."""
 
-    # --- Escalation notice --------------------------------------------------
-    if output.needs_escalation:
-        lines = [
-            "Your question has been forwarded to our support team.",
-            "We will get back to you as soon as possible.",
-        ]
-        if output.escalation_reason:
-            lines.append(f"\n_{output.escalation_reason}_")
-        return "\n".join(lines)
-
     # --- Clarification / follow-up question ---------------------------------
     if output.follow_up_question and not output.answer:
         return output.follow_up_question

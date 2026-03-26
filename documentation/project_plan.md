@@ -40,9 +40,8 @@ The AI agent must:
 6. Detect the user's language and respond in the same language whenever possible.
 7. Use retrieved company documentation and approved knowledge to generate a grounded answer.
 8. Ask a short follow-up question if the user's request is incomplete or ambiguous.
-9. If the answer cannot be found with sufficient confidence, escalate the issue to the human support workflow via external API.
-10. Inform the client politely that the case has been forwarded to support.
-11. When the human support response arrives later, send the final answer back to the same Telegram group and preferably as a reply to the original user/question.
+9. If the answer cannot be found with sufficient confidence, escalate the issue to the human support workflow via Zendesk. Do NOT reply to the user — stay silent in Telegram. The escalation reason is posted as a Zendesk comment for human agents.
+10. When the human support response arrives later, send the final answer back to the same Telegram group and preferably as a reply to the original user/question.
 12. Store newly resolved support answers in approved support memory so similar future questions can be answered without escalating again.
 
 ## 4. Operating Context
@@ -262,13 +261,14 @@ Escalate when:
 
 ### Ticket Workflow
 
-1. AI detects unanswerable question.
-2. AI creates ticket via external API — the ticket includes:
+1. AI detects unanswerable question (no grounded answer from RAG).
+2. AI creates ticket via Zendesk API — the ticket includes:
    - the extracted question
    - conversation context
    - group identifier
    - user information
-3. AI replies to the client: "Your question has been forwarded to our support team. We will respond shortly."
+3. AI stays silent in Telegram (no reply to the user). The escalation reason is posted as a
+   Zendesk comment (authored by the bot's Zendesk user) for human agents.
 4. Support team reviews and responds.
 5. `TicketPoller` detects the answered ticket.
 6. Response is automatically posted back to the Telegram group (as a reply to the original message).
@@ -346,7 +346,7 @@ Telegram Group Message (text / photo / voice / audio / image document)
         │
         ▼
   AnswerGenerator  ──► grounded answer  ──► format_reply() ──► Telegram
-  (Claude Vision)  ──► needs_escalation ──► TicketAPIClient ──► human agent
+  (Claude Vision)  ──► needs_escalation ──► silent (no Telegram reply) + Zendesk escalation comment ──► human agent
   (sees screenshot       TicketPoller polls for resolution
    + retrieved docs)
 ```

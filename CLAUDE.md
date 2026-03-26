@@ -143,7 +143,7 @@ Open API health check: `http://localhost:8000/health`
 | `ZENDESK_API_SUBDOMAIN` | Zendesk subdomain for Support Tickets API (empty = use `ZENDESK_HELP_CENTER_SUBDOMAIN`) |
 | `ZENDESK_API_TOKEN` | Zendesk API token (required) |
 | `ZENDESK_EMAIL` | Zendesk account email (required) |
-| `ZENDESK_BOT_USER_ID` | Zendesk user ID of the bot, for filtering own webhook comments (default: `0`) |
+| `ZENDESK_BOT_USER_ID` | Zendesk user ID of the bot — used as author_id for bot comments and to filter own webhook comments (required for correct operation) |
 | `GEMINI_EMBEDDING_MODEL` | Gemini embedding model (default: `models/gemini-embedding-2-preview`) |
 | `GEMINI_EMBEDDING_DIMENSIONS` | Embedding output dimensions (default: `3072`) |
 | `GEMINI_FLASH_MODEL` | Gemini Flash model for voice transcription (default: `gemini-2.0-flash`) |
@@ -197,15 +197,19 @@ incoming Telegram group message (text, photo, voice, audio, or image document)
        → skip_zendesk: skip (non-support, no active ticket)
        Upload photos/attachments to Zendesk if any
        Set link_type on message row (root/reply)
-  → if AI replies:
-       Send reply to Telegram
-       Post AI reply as Zendesk comment on the same ticket
-  → if escalated:
-       Post escalation comment to Zendesk ticket
-       Send notification to Telegram group
+  → if AI has a grounded answer:
+       Send answer to Telegram
+       Post AI reply as Zendesk comment on the same ticket (author_id = ZENDESK_BOT_USER_ID)
+  → if clarification needed:
+       Send follow-up question to Telegram
+       Post follow-up question as Zendesk comment (author_id = ZENDESK_BOT_USER_ID)
+  → if escalated (no answer from RAG):
+       Do NOT reply in Telegram (stay silent)
+       Post escalation reason as internal Zendesk comment (author_id = ZENDESK_BOT_USER_ID)
 
 Zendesk agent responds (webhook):
   → POST /api/zendesk/events receives comment JSON
+  → Skip if author_id == ZENDESK_BOT_USER_ID (prevent echo loops)
   → Look up ConversationThread by zendesk_ticket_id → find group_id
   → Store agent message in DB (source="zendesk")
   → Send message to Telegram group

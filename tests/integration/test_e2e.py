@@ -176,7 +176,6 @@ async def test_e2e_support_question_returns_grounded_answer(
     assert output.language == "en"
     assert output.answer != ""
     assert output.needs_escalation is False
-    assert output.ticket_id == ""
 
 
 @pytest.mark.asyncio
@@ -260,14 +259,6 @@ async def test_e2e_escalation_creates_ticket(seeded_qdrant: QdrantWrapper) -> No
     mock_embedder = MagicMock()
     mock_embedder.embed_text = AsyncMock(return_value=_QUESTION_VEC)
 
-    ticket_record = MagicMock()
-    ticket_record.ticket_id = "E2E-TICKET-007"
-
-    ticket_client = MagicMock()
-    ticket_client.create_ticket = AsyncMock(return_value=ticket_record)
-    ticket_store = MagicMock()
-    ticket_store.add = AsyncMock()
-
     classifier = MessageClassifier(client=mock_anthropic)
     extractor = QuestionExtractor(client=mock_anthropic)
     generator = AnswerGenerator(client=mock_anthropic)
@@ -280,8 +271,6 @@ async def test_e2e_escalation_creates_ticket(seeded_qdrant: QdrantWrapper) -> No
         retriever=retriever,
         reranker=reranker,
         generator=generator,
-        ticket_client=ticket_client,
-        ticket_store=ticket_store,
     )
 
     agent_input = AgentInput(
@@ -296,7 +285,5 @@ async def test_e2e_escalation_creates_ticket(seeded_qdrant: QdrantWrapper) -> No
     output = await agent.process(agent_input)
 
     assert output.needs_escalation is True
-    assert output.ticket_id == "E2E-TICKET-007"
     assert output.category == MessageCategory.ESCALATION_REQUIRED
-    ticket_client.create_ticket.assert_awaited_once()
-    ticket_store.add.assert_awaited_once()
+    assert output.should_reply is False

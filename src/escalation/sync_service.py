@@ -222,9 +222,11 @@ class ZendeskSyncService:
             logger.debug("SyncService: no active ticket for bot response, skipping")
             return None
 
+        settings = get_settings()
         comment = ZendeskComment(
             body=f"[AI Bot]: {text}",
             public=True,
+            author_id=settings.zendesk_bot_user_id or None,
         )
         comment_id = await self._zendesk.add_comment(
             ticket_id,
@@ -246,9 +248,11 @@ class ZendeskSyncService:
             logger.debug("SyncService: no active ticket for escalation notice, skipping")
             return None
 
+        settings = get_settings()
         comment = ZendeskComment(
             body=f"[ESCALATION]: {notice_text}",
             public=True,
+            author_id=settings.zendesk_bot_user_id or None,
         )
         comment_id = await self._zendesk.add_comment(
             ticket_id,

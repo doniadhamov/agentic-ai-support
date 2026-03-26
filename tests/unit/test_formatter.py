@@ -57,22 +57,6 @@ def test_non_doc_source_omitted() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Escalation
-# ---------------------------------------------------------------------------
-
-
-def test_escalation_message() -> None:
-    result = format_reply(_output(needs_escalation=True, escalation_reason="Too complex"))
-    assert "forwarded" in result.lower() or "support team" in result.lower()
-    assert "Too complex" in result
-
-
-def test_escalation_without_reason() -> None:
-    result = format_reply(_output(needs_escalation=True))
-    assert "forwarded" in result.lower() or "support team" in result.lower()
-
-
-# ---------------------------------------------------------------------------
 # Follow-up question (no answer)
 # ---------------------------------------------------------------------------
 

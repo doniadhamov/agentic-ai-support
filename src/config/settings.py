@@ -62,7 +62,7 @@ class Settings(BaseSettings):
     zendesk_email: str = Field(..., description="Zendesk account email (required for ticket sync)")
     zendesk_bot_user_id: int = Field(
         default=0,
-        description="Zendesk user ID of the bot, used to filter own comments in webhook",
+        description="Zendesk user ID of the bot — used as author_id for bot comments and to filter own comments in webhook",
     )
     zendesk_telegram_chat_id_field_id: str = Field(
         default="",

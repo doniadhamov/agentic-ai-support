@@ -178,10 +178,14 @@ class SupportAgent:
             MessageCategory.ESCALATION_REQUIRED if generation.needs_escalation else category
         )
 
+        # When escalating (no answer from RAG), don't reply in Telegram —
+        # the message is already synced to Zendesk for human support.
+        should_reply = not generation.needs_escalation
+
         return AgentOutput(
             category=final_category,
             language=language,
-            should_reply=True,
+            should_reply=should_reply,
             extracted_question=extraction.extracted_question,
             answer=generation.answer,
             follow_up_question=generation.follow_up_question,

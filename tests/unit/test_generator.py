@@ -104,7 +104,7 @@ async def test_generate_with_memory_source(mock_anthropic_client: MagicMock) -> 
 @pytest.mark.asyncio
 async def test_generate_escalation_when_no_chunks(mock_anthropic_client: MagicMock) -> None:
     mock_anthropic_client.messages.create.return_value = _make_tool_use_response(
-        answer="I've forwarded your issue to our support team.",
+        answer="",
         needs_escalation=True,
         escalation_reason="No relevant documentation found for this account-specific issue.",
     )
@@ -123,7 +123,7 @@ async def test_generate_escalation_when_no_chunks(mock_anthropic_client: MagicMo
 @pytest.mark.asyncio
 async def test_generate_escalation_with_low_confidence(mock_anthropic_client: MagicMock) -> None:
     mock_anthropic_client.messages.create.return_value = _make_tool_use_response(
-        answer="Your issue has been forwarded to support.",
+        answer="",
         needs_escalation=True,
         escalation_reason="Retrieved documentation does not address this specific error.",
     )
@@ -169,7 +169,7 @@ async def test_generate_follow_up_question(mock_anthropic_client: MagicMock) -> 
 @pytest.mark.asyncio
 async def test_generate_formats_empty_chunks_gracefully(mock_anthropic_client: MagicMock) -> None:
     mock_anthropic_client.messages.create.return_value = _make_tool_use_response(
-        answer="Forwarded to support.", needs_escalation=True, escalation_reason="No docs found."
+        answer="", needs_escalation=True, escalation_reason="No docs found."
     )
     generator = AnswerGenerator(client=mock_anthropic_client)
 

@@ -35,8 +35,9 @@ Telegram Group Message (text / photo / voice / audio / image document)
   ScoreThresholdFilter  (drop chunks below MIN_CONFIDENCE_SCORE)
         │
         ▼
-  AnswerGenerator  ──► grounded answer  ──► format_reply() ──► Telegram
-  (Claude Vision)  ──► needs_escalation ──► escalation notice ──► Telegram + Zendesk
+  AnswerGenerator  ──► grounded answer  ──► format_reply() ──► Telegram + Zendesk
+  (Claude Vision)  ──► clarification   ──► follow-up question ──► Telegram + Zendesk
+                   ──► needs_escalation ──► silent (no Telegram reply) + escalation notice ──► Zendesk only
         │
         ▼
   ZendeskSyncService
@@ -150,7 +151,7 @@ In your Zendesk admin, create a **Trigger** that fires when an agent adds a publ
   }
   ```
 
-Set `ZENDESK_BOT_USER_ID` in `.env` to the bot's Zendesk user ID so it can filter out its own comments.
+Set `ZENDESK_BOT_USER_ID` in `.env` to the bot's Zendesk user ID. This is used both as `author_id` for bot-authored comments (AI replies, escalation notices) and to filter the bot's own comments in the webhook handler to prevent echo loops.
 
 ## Environment Variables
 
@@ -168,7 +169,7 @@ Set `ZENDESK_BOT_USER_ID` in `.env` to the bot's Zendesk user ID so it can filte
 | `QDRANT_API_KEY` | | `` | Qdrant API key (if using Qdrant Cloud) |
 | `ZENDESK_HELP_CENTER_SUBDOMAIN` | | `support.datatruck.io` | Zendesk Help Center subdomain |
 | `ZENDESK_API_SUBDOMAIN` | | `` | Zendesk Support Tickets API subdomain (falls back to Help Center) |
-| `ZENDESK_BOT_USER_ID` | | `0` | Zendesk user ID of the bot (filters own webhook comments) |
+| `ZENDESK_BOT_USER_ID` | ✅ | — | Zendesk user ID of the bot (used as author_id for bot comments + filters own webhook comments) |
 | `SUPPORT_MIN_CONFIDENCE_SCORE` | | `0.70` | Minimum Qdrant cosine score to accept a chunk |
 | `RAG_OVERRIDE_MIN_SCORE` | | `0.75` | Min RAG score to skip classifier (fast-path to SUPPORT_QUESTION) |
 | `GROUP_CONTEXT_WINDOW` | | `20` | Recent messages to retain per group |
@@ -282,7 +283,7 @@ re-ingestion is idempotent.
 
 The bot syncs every Telegram group conversation to Zendesk tickets:
 
-1. **Telegram → Zendesk**: Every message is analyzed by the AI ThreadRouter to determine which Zendesk ticket it belongs to. Photos are uploaded via the Zendesk Attachments API. AI responses are also posted as Zendesk comments.
+1. **Telegram → Zendesk**: Every message is analyzed by the AI ThreadRouter to determine which Zendesk ticket it belongs to. Photos are uploaded via the Zendesk Attachments API. AI responses and clarification follow-ups are posted as Zendesk comments (authored by the bot's Zendesk user). When escalating (no RAG answer), the bot stays silent in Telegram and posts the escalation reason as a Zendesk comment for human agents.
 
 2. **Zendesk → Telegram**: When a support agent responds in Zendesk, a webhook trigger sends the comment to the bot's `/api/zendesk/events` endpoint, which delivers it to the correct Telegram group.
 
