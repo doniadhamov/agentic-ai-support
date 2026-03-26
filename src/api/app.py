@@ -69,7 +69,7 @@ async def readiness_check() -> dict:
 
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.get(
-                    f"https://{settings.zendesk_subdomain}/api/v2/tickets/count.json",
+                    f"https://{settings.zendesk_api_subdomain or settings.zendesk_help_center_subdomain}/api/v2/tickets/count.json",
                     auth=(f"{settings.zendesk_email}/token", settings.zendesk_api_token),
                 )
                 resp.raise_for_status()

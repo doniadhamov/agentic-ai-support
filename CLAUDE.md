@@ -139,7 +139,8 @@ Open API health check: `http://localhost:8000/health`
 | `GOOGLE_API_KEY` | Google API key for Gemini embeddings |
 | `DATABASE_URL` | PostgreSQL async URL (required for Zendesk ticket sync) |
 | `QDRANT_URL` | Qdrant URL (default: `http://localhost:6333`) |
-| `ZENDESK_SUBDOMAIN` | Zendesk subdomain (default: `support.datatruck.io`) |
+| `ZENDESK_HELP_CENTER_SUBDOMAIN` | Zendesk subdomain for Help Center (default: `support.datatruck.io`) |
+| `ZENDESK_API_SUBDOMAIN` | Zendesk subdomain for Support Tickets API (empty = use `ZENDESK_HELP_CENTER_SUBDOMAIN`) |
 | `ZENDESK_API_TOKEN` | Zendesk API token (required) |
 | `ZENDESK_EMAIL` | Zendesk account email (required) |
 | `ZENDESK_BOT_USER_ID` | Zendesk user ID of the bot, for filtering own webhook comments (default: `0`) |

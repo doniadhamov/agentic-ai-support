@@ -23,7 +23,7 @@ class ZendeskTicketClient:
         api_token: str | None = None,
     ) -> None:
         settings = get_settings()
-        self._subdomain = subdomain or settings.zendesk_subdomain
+        self._subdomain = subdomain or settings.zendesk_api_subdomain or settings.zendesk_help_center_subdomain
         email = email or settings.zendesk_email
         api_token = api_token or settings.zendesk_api_token
         self._base_url = f"https://{self._subdomain}/api/v2"

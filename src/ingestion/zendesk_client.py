@@ -16,7 +16,7 @@ class ZendeskClient:
 
     def __init__(self) -> None:
         settings = get_settings()
-        self._base_url = f"https://{settings.zendesk_subdomain}/api/v2"
+        self._base_url = f"https://{settings.zendesk_help_center_subdomain}/api/v2"
         self._auth = httpx.BasicAuth(
             username=f"{settings.zendesk_email}/token",
             password=settings.zendesk_api_token,

@@ -53,7 +53,11 @@ class Settings(BaseSettings):
     qdrant_api_key: str = Field(default="")
 
     # --- Zendesk ---
-    zendesk_subdomain: str = Field(default="support.datatruck.io")
+    zendesk_help_center_subdomain: str = Field(default="support.datatruck.io")
+    zendesk_api_subdomain: str = Field(
+        default="",
+        description="Zendesk subdomain for Support Tickets API (if different from Help Center)",
+    )
     zendesk_api_token: str = Field(..., description="Zendesk API token (required for ticket sync)")
     zendesk_email: str = Field(..., description="Zendesk account email (required for ticket sync)")
     zendesk_bot_user_id: int = Field(

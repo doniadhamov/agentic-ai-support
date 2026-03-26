@@ -166,7 +166,8 @@ Set `ZENDESK_BOT_USER_ID` in `.env` to the bot's Zendesk user ID so it can filte
 | `ANTHROPIC_FAST_MODEL` | | `claude-haiku-4-5` | Haiku model for classification/extraction/thread routing |
 | `QDRANT_URL` | | `http://localhost:6333` | Qdrant instance URL |
 | `QDRANT_API_KEY` | | `` | Qdrant API key (if using Qdrant Cloud) |
-| `ZENDESK_SUBDOMAIN` | | `support.datatruck.io` | Zendesk subdomain |
+| `ZENDESK_HELP_CENTER_SUBDOMAIN` | | `support.datatruck.io` | Zendesk Help Center subdomain |
+| `ZENDESK_API_SUBDOMAIN` | | `` | Zendesk Support Tickets API subdomain (falls back to Help Center) |
 | `ZENDESK_BOT_USER_ID` | | `0` | Zendesk user ID of the bot (filters own webhook comments) |
 | `SUPPORT_MIN_CONFIDENCE_SCORE` | | `0.70` | Minimum Qdrant cosine score to accept a chunk |
 | `RAG_OVERRIDE_MIN_SCORE` | | `0.75` | Min RAG score to skip classifier (fast-path to SUPPORT_QUESTION) |

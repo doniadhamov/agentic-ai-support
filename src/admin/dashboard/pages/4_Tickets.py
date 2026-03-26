@@ -139,7 +139,8 @@ zendesk_subdomain = "support.datatruck.io"
 try:
     from src.config.settings import get_settings
 
-    zendesk_subdomain = get_settings().zendesk_subdomain
+    _settings = get_settings()
+    zendesk_subdomain = _settings.zendesk_api_subdomain or _settings.zendesk_help_center_subdomain
 except Exception:
     pass
 
