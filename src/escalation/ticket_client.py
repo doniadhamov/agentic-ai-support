@@ -52,7 +52,7 @@ class ZendeskTicketClient:
             comment_dict["author_id"] = payload.author_id
 
         ticket_dict: dict = {
-            "subject": payload.subject,
+            "subject": f"test-tg-chat: {payload.subject}",
             "comment": comment_dict,
             "tags": payload.tags,
         }

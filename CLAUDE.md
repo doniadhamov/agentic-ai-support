@@ -205,7 +205,7 @@ incoming Telegram group message (text, photo, voice, audio, or image document)
        Send notification to Telegram group
 
 Zendesk agent responds (webhook):
-  → POST /api/zendesk/webhook receives comment JSON
+  → POST /api/zendesk/events receives comment JSON
   → Look up ConversationThread by zendesk_ticket_id → find group_id
   → Store agent message in DB (source="zendesk")
   → Send message to Telegram group
@@ -274,7 +274,7 @@ The bot runs a FastAPI server on port **8000** alongside the Telegram bot with:
 - `GET /health` — liveness probe (always 200)
 - `GET /health/ready` — readiness probe (checks Qdrant + PostgreSQL + Zendesk connectivity)
 - `GET /metrics` — operational metrics (doc/memory points, open tickets, active threads)
-- `POST /api/zendesk/webhook` — receives Zendesk agent comments for delivery to Telegram
+- `POST /api/zendesk/events` — receives Zendesk agent comments for delivery to Telegram
 
 ## Qdrant Collections
 

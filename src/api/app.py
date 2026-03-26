@@ -132,8 +132,8 @@ async def basic_metrics() -> dict:
     return metrics
 
 
-@app.post("/api/zendesk/webhook")
-async def zendesk_webhook(request: Request) -> dict:
+@app.post("/api/zendesk/events")
+async def zendesk_events(request: Request) -> dict:
     """Receive Zendesk webhook payloads when an agent adds a comment."""
     if _webhook_handler is None:
         logger.warning("Zendesk webhook received but handler not configured")

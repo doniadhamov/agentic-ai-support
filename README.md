@@ -52,7 +52,7 @@ Telegram Group Message (text / photo / voice / audio / image document)
 Zendesk Agent Responds
         │
         ▼
-  POST /api/zendesk/webhook  (Zendesk trigger sends comment JSON)
+  POST /api/zendesk/events  (Zendesk trigger sends comment JSON)
         │
         ├── Look up ConversationThread → find Telegram group_id
         ├── Store agent message in DB (source="zendesk")
@@ -134,12 +134,12 @@ The FastAPI server runs alongside the bot on port **8000**:
 - `GET /health` — liveness probe
 - `GET /health/ready` — readiness probe (checks Qdrant + PostgreSQL + Zendesk)
 - `GET /metrics` — operational metrics (doc/memory counts, open tickets, active threads)
-- `POST /api/zendesk/webhook` — receives Zendesk agent comments for delivery to Telegram
+- `POST /api/zendesk/events` — receives Zendesk agent comments for delivery to Telegram
 
 ### 6. Configure Zendesk webhook
 
 In your Zendesk admin, create a **Trigger** that fires when an agent adds a public comment:
-- **Action**: Notify webhook → `POST https://<your-bot-host>:8000/api/zendesk/webhook`
+- **Action**: Notify webhook → `POST https://<your-bot-host>:8000/api/zendesk/events`
 - **Payload** (JSON):
   ```json
   {
@@ -284,7 +284,7 @@ The bot syncs every Telegram group conversation to Zendesk tickets:
 
 1. **Telegram → Zendesk**: Every message is analyzed by the AI ThreadRouter to determine which Zendesk ticket it belongs to. Photos are uploaded via the Zendesk Attachments API. AI responses are also posted as Zendesk comments.
 
-2. **Zendesk → Telegram**: When a support agent responds in Zendesk, a webhook trigger sends the comment to the bot's `/api/zendesk/webhook` endpoint, which delivers it to the correct Telegram group.
+2. **Zendesk → Telegram**: When a support agent responds in Zendesk, a webhook trigger sends the comment to the bot's `/api/zendesk/events` endpoint, which delivers it to the correct Telegram group.
 
 3. **Ticket closure**: When a ticket is solved/closed in Zendesk, the TicketSummarizer generates a de-identified Q&A summary and stores it in `datatruck_memory` for future RAG retrieval.
 
