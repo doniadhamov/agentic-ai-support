@@ -144,8 +144,15 @@ async def zendesk_events(request: Request) -> dict:
     except Exception:
         return {"status": "error", "reason": "invalid JSON"}
 
-    logger.info(
-        "Zendesk webhook received: ticket_id={}",
-        payload.get("ticket_id", "unknown"),
-    )
-    return await _webhook_handler.handle_comment(payload)
+    result = await _webhook_handler.handle_event(payload)
+
+    if result.get("status") == "ignored":
+        detail = payload.get("detail") or {}
+        logger.debug(
+            "Zendesk webhook ignored: ticket_id={}, type={}, reason={}",
+            detail.get("id", "unknown"),
+            payload.get("type", "unknown"),
+            result.get("reason", "unknown"),
+        )
+
+    return result
