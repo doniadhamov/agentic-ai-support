@@ -37,6 +37,7 @@ def _make_payload(
     author_id: str = "12345",
     author_name: str = "Agent",
     status: str = "OPEN",
+    actor_id: str = "99999",
 ) -> dict:
     if tags is None:
         tags = ["source_telegram"]
@@ -46,6 +47,7 @@ def _make_payload(
             "id": ticket_id,
             "status": status,
             "tags": tags,
+            "actor_id": actor_id,
         },
         "event": {
             "comment": {
@@ -113,16 +115,12 @@ async def test_no_tags_field_rejected(handler: ZendeskWebhookHandler) -> None:
 
 
 @pytest.mark.asyncio
-@patch("src.escalation.webhook_handler.get_settings")
 @patch("src.escalation.webhook_handler.save_message", new_callable=AsyncMock)
 async def test_comment_delivered_to_telegram(
     mock_save: AsyncMock,
-    mock_settings: MagicMock,
     handler: ZendeskWebhookHandler,
 ) -> None:
     """Agent comment is sent to the correct Telegram group."""
-    mock_settings.return_value.zendesk_bot_user_id = 0
-
     # Set up thread lookup to return a thread
     thread = MagicMock()
     thread.group_id = -1001234567890
@@ -150,29 +148,28 @@ async def test_comment_delivered_to_telegram(
 
 
 @pytest.mark.asyncio
-@patch("src.escalation.webhook_handler.get_settings")
-async def test_comment_skipped_for_bot_own_comment(
-    mock_settings: MagicMock,
-    handler: ZendeskWebhookHandler,
-) -> None:
-    """Bot's own comments are ignored to prevent echo loops."""
-    mock_settings.return_value.zendesk_bot_user_id = 12345
+async def test_comment_skipped_for_api_originated(handler: ZendeskWebhookHandler) -> None:
+    """Comments originating from our API account are ignored (actor_id filter)."""
+    handler._api_account_user_id = 33333
+    result = await handler.handle_event(
+        _make_payload(author_id="12345", actor_id="33333")
+    )
+    assert result["status"] == "ignored"
+    assert "API-originated" in result["reason"]
 
+
+@pytest.mark.asyncio
+async def test_comment_skipped_for_bot_own_comment(handler: ZendeskWebhookHandler) -> None:
+    """Bot's own comments are ignored (author_id fallback filter)."""
+    handler._bot_zendesk_user_id = 12345
     result = await handler.handle_event(_make_payload(author_id="12345"))
-
     assert result["status"] == "ignored"
     assert "bot's own comment" in result["reason"]
 
 
-
 @pytest.mark.asyncio
-@patch("src.escalation.webhook_handler.get_settings")
-async def test_comment_skipped_when_no_thread(
-    mock_settings: MagicMock,
-    handler: ZendeskWebhookHandler,
-) -> None:
+async def test_comment_skipped_when_no_thread(handler: ZendeskWebhookHandler) -> None:
     """Comment is ignored when no conversation thread exists for the ticket."""
-    mock_settings.return_value.zendesk_bot_user_id = 0
     handler._thread_store.get_thread_for_ticket = AsyncMock(return_value=None)
 
     result = await handler.handle_event(_make_payload())
@@ -182,14 +179,8 @@ async def test_comment_skipped_when_no_thread(
 
 
 @pytest.mark.asyncio
-@patch("src.escalation.webhook_handler.get_settings")
-async def test_comment_skipped_for_empty_body(
-    mock_settings: MagicMock,
-    handler: ZendeskWebhookHandler,
-) -> None:
+async def test_comment_skipped_for_empty_body(handler: ZendeskWebhookHandler) -> None:
     """Empty comment bodies are ignored."""
-    mock_settings.return_value.zendesk_bot_user_id = 0
-
     result = await handler.handle_event(_make_payload(body=""))
 
     assert result["status"] == "ignored"

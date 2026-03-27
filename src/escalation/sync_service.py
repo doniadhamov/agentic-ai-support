@@ -32,11 +32,13 @@ class ZendeskSyncService:
         thread_store: ConversationThreadStore,
         thread_router: ThreadRouter,
         profile_service: ZendeskProfileService | None = None,
+        bot_zendesk_user_id: int | None = None,
     ) -> None:
         self._zendesk = zendesk_client
         self._thread_store = thread_store
         self._router = thread_router
         self._profile_service = profile_service
+        self._bot_zendesk_user_id = bot_zendesk_user_id
 
     async def sync_message(
         self,
@@ -222,11 +224,10 @@ class ZendeskSyncService:
             logger.debug("SyncService: no active ticket for bot response, skipping")
             return None
 
-        settings = get_settings()
         comment = ZendeskComment(
             body=f"[AI Bot]: {text}",
             public=True,
-            author_id=settings.zendesk_bot_user_id or None,
+            author_id=self._bot_zendesk_user_id,
         )
         comment_id = await self._zendesk.add_comment(
             ticket_id,
@@ -236,28 +237,3 @@ class ZendeskSyncService:
         logger.debug("SyncService: synced bot response to ticket={}", ticket_id)
         return comment_id
 
-    async def sync_escalation_notice(
-        self,
-        group_id: int,
-        user_id: int,
-        notice_text: str,
-    ) -> int | None:
-        """Post an escalation notification as a Zendesk comment."""
-        ticket_id = await self._thread_store.get_active_ticket_id(group_id, user_id)
-        if not ticket_id:
-            logger.debug("SyncService: no active ticket for escalation notice, skipping")
-            return None
-
-        settings = get_settings()
-        comment = ZendeskComment(
-            body=f"[ESCALATION]: {notice_text}",
-            public=True,
-            author_id=settings.zendesk_bot_user_id or None,
-        )
-        comment_id = await self._zendesk.add_comment(
-            ticket_id,
-            comment,
-            tags=["source_telegram"],
-        )
-        logger.info("SyncService: posted escalation notice to ticket={}", ticket_id)
-        return comment_id

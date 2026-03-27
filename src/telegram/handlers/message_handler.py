@@ -178,18 +178,9 @@ async def handle_group_message(
         except Exception as exc:  # noqa: BLE001
             logger.bind(**log_ctx).warning("Zendesk sync failed: {}", exc)
 
-    # --- Step 6: Escalation (no reply) — sync escalation reason to Zendesk -----
+    # --- Step 6: Escalation (no reply) -----
     if output.needs_escalation:
         logger.bind(**log_ctx).info("Escalated — not replying in Telegram")
-        if sync_service and output.escalation_reason:
-            try:
-                await sync_service.sync_escalation_notice(
-                    group_id=chat_id,
-                    user_id=user_id,
-                    notice_text=output.escalation_reason,
-                )
-            except Exception as exc:  # noqa: BLE001
-                logger.bind(**log_ctx).warning("Failed to sync escalation notice: {}", exc)
         return
 
     # --- Step 7: Reply if the agent decided to respond -------------------------

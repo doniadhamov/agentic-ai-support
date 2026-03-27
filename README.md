@@ -151,7 +151,7 @@ In your Zendesk admin, create a **Trigger** that fires when an agent adds a publ
   }
   ```
 
-Set `ZENDESK_BOT_USER_ID` in `.env` to the bot's Zendesk user ID. This is used both as `author_id` for bot-authored comments (AI replies, escalation notices) and to filter the bot's own comments in the webhook handler to prevent echo loops.
+Set `ZENDESK_ADMIN_USER_ID` in `.env` to the Zendesk user ID of the API token owner (admin account). The webhook handler uses `detail.actor_id` to skip all API-originated comments (user messages synced from Telegram, bot replies). `ZENDESK_BOT_USER_ID` is auto-resolved at startup (env → DB → create via Profiles API) and used as `author_id` for bot-authored comments.
 
 ## Environment Variables
 
@@ -169,7 +169,8 @@ Set `ZENDESK_BOT_USER_ID` in `.env` to the bot's Zendesk user ID. This is used b
 | `QDRANT_API_KEY` | | `` | Qdrant API key (if using Qdrant Cloud) |
 | `ZENDESK_HELP_CENTER_SUBDOMAIN` | | `support.datatruck.io` | Zendesk Help Center subdomain |
 | `ZENDESK_API_SUBDOMAIN` | | `` | Zendesk Support Tickets API subdomain (falls back to Help Center) |
-| `ZENDESK_BOT_USER_ID` | ✅ | — | Zendesk user ID of the bot (used as author_id for bot comments + filters own webhook comments) |
+| `ZENDESK_BOT_USER_ID` | | `0` | Zendesk user ID of the bot (auto-resolved at startup if not set) |
+| `ZENDESK_ADMIN_USER_ID` | ✅ | — | Zendesk user ID of the API token owner (filters API-originated webhook comments) |
 | `SUPPORT_MIN_CONFIDENCE_SCORE` | | `0.70` | Minimum Qdrant cosine score to accept a chunk |
 | `RAG_OVERRIDE_MIN_SCORE` | | `0.75` | Min RAG score to skip classifier (fast-path to SUPPORT_QUESTION) |
 | `GROUP_CONTEXT_WINDOW` | | `20` | Recent messages to retain per group |

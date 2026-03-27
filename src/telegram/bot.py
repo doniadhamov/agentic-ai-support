@@ -92,11 +92,23 @@ async def _init_zendesk_services(bot: Bot, dp: Dispatcher) -> None:
     ticket_summarizer = TicketSummarizer()
     profile_service = ZendeskProfileService(zendesk_client=zendesk_client)
 
+    # Resolve the bot's Zendesk user ID (env → DB → create via Profiles API)
+    bot_info = await bot.get_me()
+    bot_zendesk_user_id = await profile_service.resolve_bot_zendesk_user_id(
+        bot_telegram_id=bot_info.id,
+        bot_name=bot_info.full_name or "Support Bot",
+    )
+    logger.info("Bot Zendesk user ID resolved → {}", bot_zendesk_user_id)
+
+    # API admin account ID (for webhook actor_id filtering)
+    api_account_user_id = settings.zendesk_admin_user_id or None
+
     sync_service = ZendeskSyncService(
         zendesk_client=zendesk_client,
         thread_store=thread_store,
         thread_router=thread_router,
         profile_service=profile_service,
+        bot_zendesk_user_id=bot_zendesk_user_id,
     )
 
     # Approved memory for storing resolved Q&A
@@ -109,6 +121,8 @@ async def _init_zendesk_services(bot: Bot, dp: Dispatcher) -> None:
         thread_store=thread_store,
         ticket_summarizer=ticket_summarizer,
         approved_memory=approved_memory,
+        bot_zendesk_user_id=bot_zendesk_user_id,
+        api_account_user_id=api_account_user_id,
     )
 
     # Inject into dispatcher for handler access

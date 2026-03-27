@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from loguru import logger
 
+from src.config.settings import get_settings
 from src.database.repositories import get_zendesk_user_by_telegram_id, save_zendesk_user
 from src.escalation.ticket_client import ZendeskTicketClient
 
@@ -82,6 +83,66 @@ class ZendeskProfileService:
         logger.info(
             "ProfileService: created mapping tg_user={} → zd_user={} profile={}",
             telegram_user_id,
+            zendesk_user_id,
+            zendesk_profile_id,
+        )
+        return zendesk_user_id
+
+    async def resolve_bot_zendesk_user_id(
+        self,
+        bot_telegram_id: int,
+        bot_name: str,
+    ) -> int:
+        """Resolve the Zendesk user ID for the Telegram bot itself.
+
+        Resolution order:
+        1. ``ZENDESK_BOT_USER_ID`` env var (if non-zero)
+        2. Local DB cache (``zendesk_users`` table by bot's Telegram ID)
+        3. Create via Zendesk Profiles API and cache in DB
+
+        Returns:
+            The bot's Zendesk user ID.
+        """
+        # 1. Check env var
+        settings = get_settings()
+        if settings.zendesk_bot_user_id:
+            logger.info(
+                "ProfileService: bot Zendesk user ID from env → {}",
+                settings.zendesk_bot_user_id,
+            )
+            return settings.zendesk_bot_user_id
+
+        # 2. Check DB cache
+        cached = await get_zendesk_user_by_telegram_id(bot_telegram_id)
+        if cached:
+            logger.info(
+                "ProfileService: bot Zendesk user ID from DB → {}",
+                cached.zendesk_user_id,
+            )
+            return cached.zendesk_user_id
+
+        # 3. Create via Profiles API
+        external_id = f"telegram_{bot_telegram_id}"
+        profile = await self._zendesk.create_or_update_profile(
+            name=bot_name,
+            identifier_value=external_id,
+        )
+
+        zendesk_user_id = int(profile["user_id"])
+        zendesk_profile_id = profile.get("id")
+
+        await save_zendesk_user(
+            zendesk_user_id=zendesk_user_id,
+            external_id=external_id,
+            telegram_user_id=bot_telegram_id,
+            zendesk_profile_id=zendesk_profile_id,
+            name=bot_name,
+            role="bot",
+        )
+
+        logger.info(
+            "ProfileService: created bot Zendesk profile tg_bot={} → zd_user={} profile={}",
+            bot_telegram_id,
             zendesk_user_id,
             zendesk_profile_id,
         )

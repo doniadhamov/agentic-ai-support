@@ -64,6 +64,10 @@ class Settings(BaseSettings):
         default=0,
         description="Zendesk user ID of the bot — used as author_id for bot comments and to filter own comments in webhook",
     )
+    zendesk_admin_user_id: int = Field(
+        default=0,
+        description="Zendesk user ID of the API token owner — used to filter API-originated webhook comments via actor_id",
+    )
     zendesk_telegram_chat_id_field_id: str = Field(
         default="",
         description="Zendesk custom field ID for storing Telegram chat ID on tickets",

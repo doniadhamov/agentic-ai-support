@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from src.agent.ticket_summarizer import TicketSummarizer
-from src.config.settings import get_settings
 from src.database.repositories import get_messages_by_ticket_id, get_root_message_id, save_message
 from src.escalation.ticket_store import ConversationThreadStore
 from src.memory.approved_memory import ApprovedMemory
@@ -36,11 +35,15 @@ class ZendeskWebhookHandler:
         thread_store: ConversationThreadStore,
         ticket_summarizer: TicketSummarizer,
         approved_memory: ApprovedMemory | None = None,
+        bot_zendesk_user_id: int | None = None,
+        api_account_user_id: int | None = None,
     ) -> None:
         self._bot = bot
         self._thread_store = thread_store
         self._summarizer = ticket_summarizer
         self._memory = approved_memory
+        self._bot_zendesk_user_id = bot_zendesk_user_id
+        self._api_account_user_id = api_account_user_id
 
     # ------------------------------------------------------------------
     # Public entry point
@@ -107,9 +110,20 @@ class ZendeskWebhookHandler:
         author_id = str(author.get("id", ""))
         author_name = author.get("name", "Zendesk Agent")
 
+        # Gate — skip comments made via our API account (catches all bot-synced
+        # comments regardless of author_id: user messages, bot replies, etc.)
+        actor_id = str((payload.get("detail") or {}).get("actor_id", ""))
+        if self._api_account_user_id and actor_id == str(self._api_account_user_id):
+            logger.debug(
+                "Webhook: skipping API-originated comment on ticket={} actor={} author={}",
+                ticket_id,
+                actor_id,
+                author_name,
+            )
+            return {"status": "ignored", "reason": "API-originated comment"}
+
         # Gate — skip bot's own comments to avoid echo loops
-        settings = get_settings()
-        if settings.zendesk_bot_user_id and author_id == str(settings.zendesk_bot_user_id):
+        if self._bot_zendesk_user_id and author_id == str(self._bot_zendesk_user_id):
             logger.debug("Webhook: skipping bot's own comment on ticket={}", ticket_id)
             return {"status": "ignored", "reason": "bot's own comment"}
 
