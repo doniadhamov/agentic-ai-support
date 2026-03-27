@@ -19,6 +19,18 @@ class TicketStatus(StrEnum):
     CLOSED = "closed"
 
 
+class ZendeskTicketClosedError(Exception):
+    """Raised when a Zendesk API call fails because the ticket is solved/closed (HTTP 422)."""
+
+    def __init__(self, ticket_id: int, status_code: int = 422, detail: str = "") -> None:
+        self.ticket_id = ticket_id
+        self.status_code = status_code
+        self.detail = detail
+        super().__init__(
+            f"Zendesk ticket {ticket_id} is closed/solved (HTTP {status_code}): {detail}"
+        )
+
+
 class ZendeskTicketCreate(BaseModel):
     """Payload for creating a new Zendesk ticket."""
 
@@ -34,6 +46,10 @@ class ZendeskTicketCreate(BaseModel):
     custom_fields: list[dict] | None = Field(
         default=None,
         description="Zendesk custom fields for the ticket",
+    )
+    via_followup_source_id: int | None = Field(
+        default=None,
+        description="Zendesk ticket ID to create a follow-up for (closed tickets only)",
     )
 
 

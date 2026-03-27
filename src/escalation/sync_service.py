@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
-from src.agent.schemas import ThreadRoutingAction
+from src.agent.schemas import ThreadRoutingAction, ThreadRoutingResult
 from src.agent.thread_router import ThreadRouter
 from src.config.settings import get_settings
 from src.database.repositories import (
@@ -16,7 +16,7 @@ from src.database.repositories import (
     update_message_zendesk_ids,
 )
 from src.escalation.ticket_client import ZendeskTicketClient
-from src.escalation.ticket_schemas import ZendeskComment
+from src.escalation.ticket_schemas import ZendeskComment, ZendeskTicketClosedError
 from src.escalation.ticket_store import ConversationThreadStore
 
 if TYPE_CHECKING:
@@ -122,6 +122,64 @@ class ZendeskSyncService:
             recent_history=recent_history,
         )
 
+        # Execute routing and handle closed-ticket recovery
+        try:
+            return await self._execute_routing(
+                routing=routing,
+                text=text,
+                username=username,
+                group_id=group_id,
+                user_id=user_id,
+                group_name=group_name,
+                zendesk_user_id=zendesk_user_id,
+                custom_fields=custom_fields,
+                images=images,
+                chat_id=chat_id,
+                message_id=message_id,
+            )
+        except ZendeskTicketClosedError as exc:
+            logger.warning(
+                "SyncService: ticket {} is closed/solved, closing stale thread and re-routing",
+                exc.ticket_id,
+            )
+            return await self._handle_closed_ticket_reroute(
+                closed_ticket_id=exc.ticket_id,
+                text=text,
+                username=username,
+                group_id=group_id,
+                user_id=user_id,
+                group_name=group_name,
+                zendesk_user_id=zendesk_user_id,
+                custom_fields=custom_fields,
+                images=images,
+                chat_id=chat_id,
+                message_id=message_id,
+                message_category=message_category,
+                reply_to_text=reply_to_text,
+                reply_to_ticket_id=reply_to_ticket_id,
+                active_tickets=active_tickets,
+                recent_history=recent_history,
+            )
+
+    # ------------------------------------------------------------------
+    # Execute a routing decision
+    # ------------------------------------------------------------------
+
+    async def _execute_routing(
+        self,
+        routing: ThreadRoutingResult,
+        text: str,
+        username: str,
+        group_id: int,
+        user_id: int,
+        group_name: str,
+        zendesk_user_id: int | None,
+        custom_fields: list[dict] | None,
+        images: list[bytes] | None,
+        chat_id: int,
+        message_id: int,
+    ) -> int | None:
+        """Execute a routing decision: select/create ticket, post comment, update DB."""
         if routing.action == ThreadRoutingAction.SKIP_ZENDESK:
             logger.debug("SyncService: skipping Zendesk for message ({})", routing.reasoning[:60])
             return None
@@ -129,10 +187,27 @@ class ZendeskSyncService:
         # Determine target ticket
         zendesk_ticket_id: int
         is_new_ticket = False
+
         if routing.action == ThreadRoutingAction.ROUTE_TO_EXISTING and routing.ticket_id:
             zendesk_ticket_id = routing.ticket_id
+
+        elif routing.action == ThreadRoutingAction.FOLLOW_UP and routing.follow_up_source_id:
+            subject = text[:80] if text else f"Follow-up from {username}"
+            comment_body = text or "(follow-up)"
+            zendesk_ticket_id, is_new_ticket = await self._thread_store.create_followup_thread(
+                group_id=group_id,
+                user_id=user_id,
+                group_name=group_name,
+                subject=subject,
+                body=comment_body,
+                followup_source_id=routing.follow_up_source_id,
+                requester_id=zendesk_user_id,
+                author_id=zendesk_user_id,
+                custom_fields=custom_fields,
+            )
+
         else:
-            # Create new ticket
+            # CREATE_NEW (or fallback)
             subject = text[:80] if text else f"Support request from {username}"
             comment_body = text or "(photo attached)"
             zendesk_ticket_id, is_new_ticket = await self._thread_store.get_or_create_thread(
@@ -212,6 +287,79 @@ class ZendeskSyncService:
         )
         return comment_id
 
+    # ------------------------------------------------------------------
+    # Handle closed-ticket re-routing
+    # ------------------------------------------------------------------
+
+    async def _handle_closed_ticket_reroute(
+        self,
+        closed_ticket_id: int,
+        text: str,
+        username: str,
+        group_id: int,
+        user_id: int,
+        group_name: str,
+        zendesk_user_id: int | None,
+        custom_fields: list[dict] | None,
+        images: list[bytes] | None,
+        chat_id: int,
+        message_id: int,
+        message_category: str,
+        reply_to_text: str | None,
+        reply_to_ticket_id: int | None,
+        active_tickets: list[dict],
+        recent_history: list[str],
+    ) -> int | None:
+        """Close the stale thread and re-route the message via AI."""
+        # 1. Close stale thread in DB
+        closed_thread = await self._thread_store.close_thread_for_ticket(closed_ticket_id)
+        closed_subject = closed_thread.subject if closed_thread else f"Ticket #{closed_ticket_id}"
+
+        # 2. Build solved_tickets list and remove from active_tickets
+        solved_tickets = [{"ticket_id": closed_ticket_id, "subject": closed_subject}]
+        updated_active = [t for t in active_tickets if t["ticket_id"] != closed_ticket_id]
+
+        # 3. Clear reply_to_ticket_id if it pointed to the closed ticket
+        if reply_to_ticket_id == closed_ticket_id:
+            reply_to_ticket_id = None
+
+        # 4. Re-route with solved_tickets context
+        new_routing = await self._router.route(
+            message_text=text,
+            message_category=message_category,
+            reply_to_text=reply_to_text,
+            reply_to_ticket_id=reply_to_ticket_id,
+            active_tickets=updated_active,
+            recent_history=recent_history,
+            solved_tickets=solved_tickets,
+        )
+
+        logger.info(
+            "SyncService: re-routed after 422 → action={} ticket_id={} follow_up_source_id={}",
+            new_routing.action.value,
+            new_routing.ticket_id,
+            new_routing.follow_up_source_id,
+        )
+
+        # 5. Execute the new routing (no 422 recovery — let errors propagate)
+        return await self._execute_routing(
+            routing=new_routing,
+            text=text,
+            username=username,
+            group_id=group_id,
+            user_id=user_id,
+            group_name=group_name,
+            zendesk_user_id=zendesk_user_id,
+            custom_fields=custom_fields,
+            images=images,
+            chat_id=chat_id,
+            message_id=message_id,
+        )
+
+    # ------------------------------------------------------------------
+    # Bot response sync
+    # ------------------------------------------------------------------
+
     async def sync_bot_response(
         self,
         group_id: int,
@@ -224,16 +372,23 @@ class ZendeskSyncService:
             logger.debug("SyncService: no active ticket for bot response, skipping")
             return None
 
-        comment = ZendeskComment(
-            body=f"[AI Bot]: {text}",
-            public=True,
-            author_id=self._bot_zendesk_user_id,
-        )
-        comment_id = await self._zendesk.add_comment(
-            ticket_id,
-            comment,
-            tags=["source_telegram"],
-        )
-        logger.debug("SyncService: synced bot response to ticket={}", ticket_id)
-        return comment_id
-
+        try:
+            comment = ZendeskComment(
+                body=f"[AI Bot]: {text}",
+                public=True,
+                author_id=self._bot_zendesk_user_id,
+            )
+            comment_id = await self._zendesk.add_comment(
+                ticket_id,
+                comment,
+                tags=["source_telegram"],
+            )
+            logger.debug("SyncService: synced bot response to ticket={}", ticket_id)
+            return comment_id
+        except ZendeskTicketClosedError:
+            logger.warning(
+                "SyncService: ticket {} is closed, closing stale thread (bot response skipped)",
+                ticket_id,
+            )
+            await self._thread_store.close_thread_for_ticket(ticket_id)
+            return None

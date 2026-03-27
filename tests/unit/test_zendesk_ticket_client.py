@@ -52,7 +52,7 @@ async def test_create_ticket_sends_correct_payload(client: ZendeskTicketClient) 
     import json
 
     payload = json.loads(request.content)
-    assert payload["ticket"]["subject"] == "Bug report"
+    assert payload["ticket"]["subject"] == "test-tg-chat: Bug report"
     assert payload["ticket"]["comment"]["body"] == "Something broke"
     assert payload["ticket"]["tags"] == ["telegram"]
 

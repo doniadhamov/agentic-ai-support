@@ -6,7 +6,7 @@ import httpx
 from loguru import logger
 
 from src.config.settings import get_settings
-from src.escalation.ticket_schemas import ZendeskComment, ZendeskTicketCreate
+from src.escalation.ticket_schemas import ZendeskComment, ZendeskTicketClosedError, ZendeskTicketCreate
 from src.utils.retry import async_retry
 
 
@@ -60,6 +60,8 @@ class ZendeskTicketClient:
             ticket_dict["requester_id"] = payload.requester_id
         if payload.custom_fields:
             ticket_dict["custom_fields"] = payload.custom_fields
+        if payload.via_followup_source_id:
+            ticket_dict["via_followup_source_id"] = payload.via_followup_source_id
 
         body = {"ticket": ticket_dict}
         async with self._client() as client:
@@ -102,6 +104,12 @@ class ZendeskTicketClient:
         body = {"ticket": ticket_dict}
         async with self._client() as client:
             response = await client.put(f"/tickets/{ticket_id}.json", json=body)
+            if response.status_code == 422:
+                raise ZendeskTicketClosedError(
+                    ticket_id=ticket_id,
+                    status_code=422,
+                    detail=response.text,
+                )
             response.raise_for_status()
             data = response.json()
 

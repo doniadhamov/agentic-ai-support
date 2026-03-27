@@ -45,7 +45,12 @@ Telegram Group Message (text / photo / voice / audio / image document)
         ├── ThreadRouter (Claude Haiku) analyzes message + active tickets + history
         │     ├── route_to_existing  ──► add comment to existing Zendesk ticket
         │     ├── create_new         ──► create new Zendesk ticket + add comment
+        │     ├── follow_up          ──► create follow-up ticket linked to solved/closed ticket
         │     └── skip_zendesk       ──► store in DB only (no Zendesk sync)
+        │
+        ├── 422 Recovery (ticket solved/closed in Zendesk but active in DB)
+        │     ├── Close stale thread in DB
+        │     └── Re-route with solved_tickets context → follow_up / create_new / etc.
         │
         └── Upload photos/attachments to Zendesk Attachments API
                 (two-step: upload → get token → reference in comment)
@@ -298,3 +303,4 @@ The `ThreadRouter` (Claude Haiku) intelligently routes messages:
 - If User B has the same problem as User A's active ticket, the message routes to User A's ticket (avoiding duplicates)
 - A Telegram reply doesn't automatically route to the replied-to message's ticket — the AI analyzes whether the content matches
 - Non-support messages (e.g. "thanks") are routed to an active ticket if contextually related
+- When a ticket is solved/closed in Zendesk but still active in our DB, a 422 error triggers automatic re-routing: the stale thread is closed and the AI re-analyzes with solved ticket context to create a follow-up ticket (via `via_followup_source_id`), a new ticket, or skip

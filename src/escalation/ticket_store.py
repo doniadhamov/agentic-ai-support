@@ -95,6 +95,50 @@ class ConversationThreadStore:
         )
         return thread
 
+    async def create_followup_thread(
+        self,
+        group_id: int,
+        user_id: int,
+        group_name: str,
+        subject: str,
+        body: str,
+        followup_source_id: int,
+        requester_id: int | None = None,
+        author_id: int | None = None,
+        custom_fields: list[dict] | None = None,
+    ) -> tuple[int, bool]:
+        """Create a Zendesk follow-up ticket linked to a closed ticket, and a new DB thread.
+
+        Returns:
+            Tuple of (zendesk_ticket_id, True).
+        """
+        ticket_id = await self._zendesk.create_ticket(
+            ZendeskTicketCreate(
+                subject=subject,
+                body=body,
+                requester_id=requester_id,
+                author_id=author_id,
+                tags=["source_telegram", "follow_up"],
+                custom_fields=custom_fields,
+                via_followup_source_id=followup_source_id,
+            )
+        )
+
+        await create_thread(
+            group_id=group_id,
+            user_id=user_id,
+            zendesk_ticket_id=ticket_id,
+            subject=subject,
+        )
+
+        logger.info(
+            "ConversationThreadStore: created follow-up thread group={} ticket={} followup_of={}",
+            group_id,
+            ticket_id,
+            followup_source_id,
+        )
+        return ticket_id, True
+
     async def get_active_ticket_id(self, group_id: int, user_id: int) -> int | None:
         """Return the Zendesk ticket ID for the user's active thread, or None."""
         thread = await get_active_thread(group_id, user_id)

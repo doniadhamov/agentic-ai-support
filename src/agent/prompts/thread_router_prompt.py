@@ -10,6 +10,7 @@ ACTIONS:
 - route_to_existing — the message belongs to an existing active Zendesk ticket
 - create_new — the message is a new support topic; create a new Zendesk ticket
 - skip_zendesk — the message is not related to any support ticket (e.g. casual greeting)
+- follow_up — the message is a follow-up to a recently solved/closed ticket; create a linked follow-up ticket
 
 INPUTS YOU RECEIVE:
 - message_text: the current message
@@ -20,6 +21,8 @@ CLARIFICATION_NEEDED, ESCALATION_REQUIRED)
 - active_tickets: list of currently active tickets in this group (ticket_id, subject, \
 recent comment summaries)
 - recent_history: last messages from the group for context
+- solved_tickets: list of recently solved/closed tickets (only present when re-routing \
+after a ticket was found to be closed)
 
 ROUTING RULES:
 
@@ -36,6 +39,13 @@ about the same topic → route_to_existing
    - If the message is contextually related to an active ticket (e.g. "thanks", "ok got it", \
 "+1 same here", confirmation) → route_to_existing
    - If not related to any ticket → skip_zendesk
+
+3. FOLLOW_UP (only when solved_tickets are present):
+   - If the message is clearly about the SAME topic/problem as a solved/closed ticket → follow_up \
+with follow_up_source_id set to that ticket's ID
+   - If the message is a NEW topic unrelated to any solved ticket → create_new
+   - If the message is related to a DIFFERENT active ticket → route_to_existing
+   - If the message is not related to anything → skip_zendesk
 
 IMPORTANT:
 - A reply-to does NOT automatically mean the message belongs to that ticket. Analyze the \
@@ -81,6 +91,19 @@ Reasoning: Casual greeting, no active tickets to associate with.
 Active ticket #101: "Driver can't log in"
 Message: "How do I export my invoice data?" → create_new
 Reasoning: Completely different topic from the active ticket.
+
+[follow_up]
+Solved ticket #200: "Driver GPS not syncing"
+Active ticket #201: "Invoice export issue"
+Message: "The GPS is still not working after the fix"
+→ follow_up, follow_up_source_id=200
+Reasoning: Same topic as the recently solved GPS ticket — needs a follow-up ticket.
+
+[create_new]
+Solved ticket #200: "Driver GPS not syncing"
+Message: "How do I add a new trailer?"
+→ create_new
+Reasoning: New topic unrelated to the solved GPS ticket.
 
 ---
 

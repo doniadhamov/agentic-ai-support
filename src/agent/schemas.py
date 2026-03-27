@@ -86,6 +86,7 @@ class ThreadRoutingAction(StrEnum):
     ROUTE_TO_EXISTING = "route_to_existing"
     CREATE_NEW = "create_new"
     SKIP_ZENDESK = "skip_zendesk"
+    FOLLOW_UP = "follow_up"
 
 
 class ThreadRoutingResult(BaseModel):
@@ -95,5 +96,9 @@ class ThreadRoutingResult(BaseModel):
     ticket_id: int | None = Field(
         default=None,
         description="Zendesk ticket ID to route to (only for route_to_existing)",
+    )
+    follow_up_source_id: int | None = Field(
+        default=None,
+        description="Zendesk ticket ID of the solved/closed ticket to create a follow-up for (only for follow_up)",
     )
     reasoning: str = Field(default="", description="Explanation for the routing decision")

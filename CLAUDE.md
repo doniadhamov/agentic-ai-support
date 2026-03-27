@@ -195,7 +195,11 @@ incoming Telegram group message (text, photo, voice, audio, or image document)
        ThreadRouter (Claude Haiku) analyzes message + active tickets + conversation history
        → route_to_existing: post comment with author_id to existing Zendesk ticket
        → create_new: create new Zendesk ticket with requester_id + author_id + custom_fields + source_telegram tag
+       → follow_up: create Zendesk follow-up ticket linked to a solved/closed ticket (via_followup_source_id)
        → skip_zendesk: skip (non-support, no active ticket)
+       If add_comment returns 422 (ticket solved/closed in Zendesk):
+         Close stale thread in DB → re-route with solved_tickets context
+         → follow_up / create_new / route_to_existing / skip_zendesk
        Upload photos/attachments to Zendesk if any
        Set link_type on message row (root/reply)
   → if AI has a grounded answer:
@@ -224,13 +228,16 @@ Zendesk agent responds (webhook):
 
 The `ThreadRouter` (Claude Haiku, `src/agent/thread_router.py`) analyzes each message to determine
 which Zendesk ticket it belongs to. Input: message text, category, reply context, active tickets,
-recent group history. Output: `route_to_existing` / `create_new` / `skip_zendesk`.
+recent group history, solved tickets (on re-route). Output: `route_to_existing` / `create_new` / `follow_up` / `skip_zendesk`.
 
 Key routing rules:
 - User B's message goes to User A's ticket if it's about the same problem (avoids duplicate tickets)
 - A Telegram reply doesn't automatically route to the replied-to message's ticket — the AI analyzes
   whether the reply is about the same topic or a new question
 - NON_SUPPORT messages are routed to an active ticket if contextually related (e.g. "thanks", "+1")
+- When a ticket is solved/closed in Zendesk but still active in our DB, a 422 error triggers
+  automatic re-routing: the stale thread is closed, and the router re-analyzes with `solved_tickets`
+  context to decide between `follow_up` (linked ticket) / `create_new` / `route_to_existing` / `skip_zendesk`
 
 ## Claude API Usage
 

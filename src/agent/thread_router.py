@@ -29,6 +29,10 @@ _TOOL_SCHEMA: dict = {
                 "type": ["integer", "null"],
                 "description": "Zendesk ticket ID to route to (only for route_to_existing)",
             },
+            "follow_up_source_id": {
+                "type": ["integer", "null"],
+                "description": "Zendesk ticket ID of the solved/closed ticket to follow up on (only for follow_up action)",
+            },
             "reasoning": {
                 "type": "string",
                 "description": "Brief explanation for the routing decision",
@@ -56,6 +60,7 @@ class ThreadRouter:
         reply_to_ticket_id: int | None = None,
         active_tickets: list[dict] | None = None,
         recent_history: list[str] | None = None,
+        solved_tickets: list[dict] | None = None,
     ) -> ThreadRoutingResult:
         """Determine where an incoming message should be routed.
 
@@ -67,6 +72,8 @@ class ThreadRouter:
             active_tickets: List of active tickets in the group, each with
                 keys: ticket_id, subject, recent_comments (summary string).
             recent_history: Recent messages from the group for context.
+            solved_tickets: List of recently solved/closed tickets (used during re-routing
+                after a 422 error), each with keys: ticket_id, subject.
 
         Returns:
             :class:`ThreadRoutingResult` with action, optional ticket_id, and reasoning.
@@ -91,6 +98,13 @@ class ThreadRouter:
         else:
             sections.append("ACTIVE TICKETS IN GROUP: (none)")
 
+        if solved_tickets:
+            solved_text = "\n".join(
+                f"  - Solved Ticket #{t['ticket_id']}: {t['subject']}"
+                for t in solved_tickets
+            )
+            sections.append(f"RECENTLY SOLVED/CLOSED TICKETS:\n{solved_text}")
+
         if recent_history:
             history_text = "\n".join(f"  - {m}" for m in recent_history[-30:])
             sections.append(f"RECENT GROUP HISTORY:\n{history_text}")
@@ -114,6 +128,7 @@ class ThreadRouter:
         result = ThreadRoutingResult(
             action=ThreadRoutingAction(tool_input["action"]),
             ticket_id=tool_input.get("ticket_id"),
+            follow_up_source_id=tool_input.get("follow_up_source_id"),
             reasoning=tool_input.get("reasoning", ""),
         )
 
