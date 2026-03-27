@@ -493,6 +493,20 @@ async def close_thread(thread_id: int) -> None:
     logger.info("DB: closed thread id={}", thread_id)
 
 
+async def update_thread_status(zendesk_ticket_id: int, status: str) -> None:
+    """Update a conversation thread's status by Zendesk ticket ID."""
+    factory = get_session_factory()
+    async with factory() as session:
+        stmt = (
+            update(ConversationThread)
+            .where(ConversationThread.zendesk_ticket_id == zendesk_ticket_id)
+            .values(status=status)
+        )
+        await session.execute(stmt)
+        await session.commit()
+    logger.info("DB: updated thread status for ticket={} → {}", zendesk_ticket_id, status)
+
+
 async def touch_thread(thread_id: int) -> None:
     """Update last_message_at on a thread to now."""
     factory = get_session_factory()
@@ -563,6 +577,19 @@ async def close_ticket(ticket_id: int, answer: str = "") -> None:
         await session.execute(stmt)
         await session.commit()
     logger.info("DB: closed ticket_id={}", ticket_id)
+
+
+async def update_ticket_status(ticket_id: int, status: str) -> None:
+    """Update a ticket's status by Zendesk ticket ID."""
+    factory = get_session_factory()
+    values: dict = {"status": status}
+    if status in ("solved", "closed"):
+        values["closed_at"] = datetime.now(tz=UTC)
+    async with factory() as session:
+        stmt = update(TicketRow).where(TicketRow.ticket_id == ticket_id).values(**values)
+        await session.execute(stmt)
+        await session.commit()
+    logger.info("DB: updated ticket status ticket_id={} → {}", ticket_id, status)
 
 
 async def get_ticket(ticket_id: int) -> TicketRecord | None:

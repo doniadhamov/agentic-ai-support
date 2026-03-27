@@ -8,7 +8,13 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from src.agent.ticket_summarizer import TicketSummarizer
-from src.database.repositories import get_messages_by_ticket_id, get_root_message_id, save_message
+from src.database.repositories import (
+    get_messages_by_ticket_id,
+    get_root_message_id,
+    save_message,
+    update_thread_status,
+    update_ticket_status,
+)
 from src.escalation.ticket_store import ConversationThreadStore
 from src.memory.approved_memory import ApprovedMemory
 from src.memory.memory_schemas import ApprovedAnswer
@@ -196,22 +202,22 @@ class ZendeskWebhookHandler:
         self, payload: dict, detail: dict, ticket_id: str | int
     ) -> dict:
         new_status = str(detail.get("status", "")).lower()
-
-        if new_status not in _CLOSED_STATUSES:
-            logger.debug(
-                "Webhook: ticket={} status changed to {} (not closed), ignoring",
-                ticket_id,
-                new_status,
-            )
-            return {"status": "received", "ticket_id": ticket_id, "event_type": "status_changed"}
-
         ticket_id_int = int(ticket_id)
 
-        # Close the conversation thread
+        # Sync status to both DB tables on every transition
+        await update_thread_status(ticket_id_int, new_status)
+        await update_ticket_status(ticket_id_int, new_status)
+        logger.info("Webhook: ticket={} status changed → {}", ticket_id, new_status)
+
+        # Extra logic only for solved/closed
+        if new_status not in _CLOSED_STATUSES:
+            return {"status": "updated", "ticket_id": ticket_id, "new_status": new_status}
+
+        # Close the conversation thread (sets closed_at timestamp)
         thread = await self._thread_store.close_thread_for_ticket(ticket_id_int)
         if thread is None:
             logger.warning("Webhook: no thread to close for ticket={}", ticket_id)
-            return {"status": "received", "ticket_id": ticket_id, "event_type": "status_changed"}
+            return {"status": "updated", "ticket_id": ticket_id, "new_status": new_status}
 
         # Summarize and store in memory
         if self._memory is not None:
