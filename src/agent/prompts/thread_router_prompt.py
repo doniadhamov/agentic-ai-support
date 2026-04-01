@@ -36,9 +36,11 @@ about the same topic → route_to_existing
    - If the message is a new topic unrelated to any active ticket → create_new
 
 2. NON_SUPPORT:
-   - If the message is contextually related to an active ticket (e.g. "thanks", "ok got it", \
-"+1 same here", confirmation) → route_to_existing
-   - If not related to any ticket → skip_zendesk
+   - Use the recent_history and active_tickets to judge whether this message is part of an \
+ongoing support conversation. Think like a human — if the same user (or the group) was just \
+discussing a support issue and this message is a reaction, confirmation, follow-up signal, \
+or contextually connected remark → route_to_existing
+   - If the message has no connection to any active ticket → skip_zendesk
 
 3. FOLLOW_UP (only when solved_tickets are present):
    - If the message is clearly about the SAME topic/problem as a solved/closed ticket → follow_up \

@@ -4,33 +4,34 @@ from __future__ import annotations
 
 CLASSIFIER_PROMPT = """\
 Classify the incoming Telegram message into one of these categories:
-- NON_SUPPORT — no actionable support request in the message
-- SUPPORT_QUESTION — the message itself contains a clear, specific support question
-- CLARIFICATION_NEEDED — the message describes a support issue but lacks enough detail to answer; also use when the user sends an image without text AND the image does NOT show a clear error, warning, or failure — the user likely needs something but hasn't stated what
+- NON_SUPPORT — no actionable support request AND no connection to an ongoing support conversation
+- SUPPORT_QUESTION — the message contains a clear, specific support question
+- CLARIFICATION_NEEDED — the user appears to need support but hasn't provided enough detail to answer
 - ESCALATION_REQUIRED — repeated failures or explicit request for human help
 
-CORE RULE:
-Classify based on the CURRENT MESSAGE ONLY. The conversation context is provided so you \
-can understand references (e.g. "it doesn't work" referring to a prior issue), but you must \
-NOT infer or re-trigger a support question from context. If the current message does not \
-contain or clearly describe a specific support problem, it is NON_SUPPORT — regardless of \
-what was discussed before.
+HOW TO CLASSIFY:
+Think like a human support agent. Read the message together with the conversation context \
+and decide the user's intent.
 
-IMAGES: The message may include a photo or screenshot. Treat the image as part of the message \
-content. A screenshot showing a clear error message, warning dialog, or failure counts as a \
-support question even if the text is minimal or absent (e.g. just "help" + screenshot of an error). \
-However, a screenshot of a normal UI screen (settings page, form, list view, dashboard) sent \
-WITHOUT text explaining the problem is CLARIFICATION_NEEDED — the user likely wants help but \
-hasn't stated what they need. \
-A photo with no text and no visible product-related content is NON_SUPPORT.
+- If the message BY ITSELF is a clear support question → SUPPORT_QUESTION.
+- If context shows the user is in an active support conversation and their message is a \
+follow-up, continuation, or signal that they need more help (e.g. "I have more questions", \
+"one more thing", "also...", "what about...") → CLARIFICATION_NEEDED. The user is still \
+in a support interaction and needs attention, even if the current message alone is vague.
+- If the message references a problem from context (e.g. "it doesn't work", "same issue") \
+→ SUPPORT_QUESTION or CLARIFICATION_NEEDED depending on specificity.
+- If there is NO support conversation in context and the message has no support intent \
+(greetings, casual chat, off-topic) → NON_SUPPORT.
+- A "thank you" or confirmation after a bot answer with no further questions → NON_SUPPORT.
 
-NON_SUPPORT includes: greetings, casual chat, thanks, reactions, acknowledgements, \
-intent-to-ask without an actual question, confirmations of a previous answer, off-topic \
-discussion, or any message with no actionable support request.
+KEY PRINCIPLE: A message that would be NON_SUPPORT in isolation may be CLARIFICATION_NEEDED \
+or SUPPORT_QUESTION when there is a recent support conversation in context. Use your judgment \
+— do not follow rigid pattern matching.
 
-SUPPORT_QUESTION requires the message to contain a clear product usage question, bug report, \
-troubleshooting request, configuration question, or process/workflow question — via text, \
-image, or both.
+IMAGES: Treat attached images as part of the message. A screenshot showing an error/warning \
+counts as a support question even with minimal text. A screenshot of a normal UI screen \
+without text explaining the problem is CLARIFICATION_NEEDED. A photo with no text and no \
+product-related content is NON_SUPPORT.
 
 Also detect the language of the message (en, ru, or uz).
 
@@ -38,35 +39,23 @@ Use the produce_output tool to return your classification.
 
 ---
 
-EXAMPLES:
+EXAMPLES (for guidance — reason from context, do not pattern-match):
 
-[NON_SUPPORT]
-Message: "Good morning everyone!" → NON_SUPPORT, en
-Message: "can i ask" → NON_SUPPORT, en
-Message: "I have another question" → NON_SUPPORT, en
-Message: "this my question)" (after bot already answered) → NON_SUPPORT, en
-Message: "thanks that helped" → NON_SUPPORT, en
+Message: "Good morning everyone!" (no support context) → NON_SUPPORT, en
+Message: "thanks that helped" (after bot answered) → NON_SUPPORT, en
 Message: "Всем привет, как дела?" → NON_SUPPORT, ru
-Message: "Assalomu alaykum, hammaga salom!" → NON_SUPPORT, uz
 
-[SUPPORT_QUESTION]
 Message: "How do I update a load status to 'Delivered'?" → SUPPORT_QUESTION, en
 Message: "Как добавить нового водителя в систему?" → SUPPORT_QUESTION, ru
-Message: "Haydovchi parolini qanday tiklash mumkin?" → SUPPORT_QUESTION, uz
-Message: "can you please check it keep giving error / when I checked there is no existing VIN" + screenshot of "Trailer with this VIN already exists" error → SUPPORT_QUESTION, en
-Message: "it doesn't let me save" + screenshot of a validation error dialog → SUPPORT_QUESTION, en
-Message: "same problem" (with prior context showing a specific error was being discussed) → SUPPORT_QUESTION, en
+Message: "same problem" (context shows a specific error being discussed) → SUPPORT_QUESTION, en
+Message: "it doesn't let me save" + screenshot of a validation error → SUPPORT_QUESTION, en
 
-[CLARIFICATION_NEEDED]
+Message: "I have more questions" (after bot just answered a support question) → CLARIFICATION_NEEDED, en
 Message: "It still doesn't work." (no prior context visible) → CLARIFICATION_NEEDED, en
-Message: "Та же проблема, что и раньше." → CLARIFICATION_NEEDED, ru
-Message: "Hali ham ishlamayapti." → CLARIFICATION_NEEDED, uz
-Message: (no text) + screenshot of a normal settings/form/list page with no visible error → CLARIFICATION_NEEDED, en
+Message: (no text) + screenshot of normal UI with no visible error → CLARIFICATION_NEEDED, en
 
-[ESCALATION_REQUIRED]
 Message: "I've followed all the steps three times but the driver still can't log in." → ESCALATION_REQUIRED, en
 Message: "Уже третий раз пробую обновить статус, но изменения не сохраняются." → ESCALATION_REQUIRED, ru
-Message: "Bir necha marta urinib ko'rdim, lekin yuk holati o'zgarmayapti." → ESCALATION_REQUIRED, uz
 
 ---
 
