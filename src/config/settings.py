@@ -82,7 +82,7 @@ class Settings(BaseSettings):
         description="Number of recent messages loaded by perceive node per group",
     )
     rag_top_k: int = Field(default=5, ge=1, le=20)
-    zendesk_sync_interval_hours: int = Field(default=48, ge=0)
+    zendesk_sync_interval_hours: int = Field(default=24, ge=0)
 
     @property
     def database_url_psycopg(self) -> str:

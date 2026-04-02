@@ -117,22 +117,18 @@ class ZendeskWebhookHandler:
         author_id = str(author.get("id", ""))
         author_name = author.get("name", "Zendesk Agent")
 
-        # Gate — skip comments made via our API account (catches all bot-synced
-        # comments regardless of author_id: user messages, bot replies, etc.)
-        actor_id = str((payload.get("detail") or {}).get("actor_id", ""))
-        if self._api_account_user_id and actor_id == str(self._api_account_user_id):
+        # Gate — skip comments posted via API on behalf of someone else.
+        # Bot-synced comments: actor_id = API account, author_id = requester or bot (different).
+        # Real agent comments: actor_id = author_id (agent acts as themselves).
+        actor_id = str(detail.get("actor_id", ""))
+        if actor_id and author_id != actor_id:
             logger.debug(
-                "Webhook: skipping API-originated comment on ticket={} actor={} author={}",
+                "Webhook: skipping API-proxied comment on ticket={} actor={} author={}",
                 ticket_id,
                 actor_id,
                 author_name,
             )
-            return {"status": "ignored", "reason": "API-originated comment"}
-
-        # Gate — skip bot's own comments to avoid echo loops
-        if self._bot_zendesk_user_id and author_id == str(self._bot_zendesk_user_id):
-            logger.debug("Webhook: skipping bot's own comment on ticket={}", ticket_id)
-            return {"status": "ignored", "reason": "bot's own comment"}
+            return {"status": "ignored", "reason": "API-proxied comment"}
 
         # Gate — must have a body
         if not body:

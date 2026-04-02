@@ -107,7 +107,7 @@ async def remember_node(
     bot_response_text = state.get("bot_response_text")
     bot_response_message_id = state.get("bot_response_message_id")
 
-    if zendesk_enabled and bot_response_text and synced_ticket_id:
+    if zendesk_enabled and action == "answer" and bot_response_text and synced_ticket_id:
         try:
             bot_comment_id = await zendesk_client.add_comment(
                 ticket_id=synced_ticket_id,
@@ -126,7 +126,7 @@ async def remember_node(
             logger.warning("remember: failed to sync bot response to Zendesk: {}", exc)
 
     # 5. Save bot's response to DB (so perceive sees it in conversation_history)
-    if bot_response_message_id and bot_response_text:
+    if action == "answer" and bot_response_message_id and bot_response_text:
         try:
             await save_message(
                 chat_id=group_id,
