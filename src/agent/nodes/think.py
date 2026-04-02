@@ -205,6 +205,18 @@ async def think_node(state: SupportState) -> dict:
     action = decision.get("action", "ignore")
     ticket_action = decision.get("ticket_action", "skip")
 
+    # Guard: LLM sometimes puts ticket_action values into action field
+    valid_actions = {"answer", "ignore", "wait", "escalate"}
+    if action not in valid_actions:
+        logger.warning("think: invalid action '{}', correcting", action)
+        if action in {"route_existing", "create_new", "follow_up", "skip"}:
+            ticket_action = action
+        # Infer correct action: if there's a question extracted, answer it
+        if decision.get("extracted_question"):
+            action = "answer"
+        else:
+            action = "ignore"
+
     logger.info(
         "think: action={} ticket_action={} urgency={} lang={} elapsed={}ms | {}",
         action,
