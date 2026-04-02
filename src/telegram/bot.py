@@ -66,13 +66,17 @@ async def _init_langgraph(bot: Bot, dp: Dispatcher) -> None:
 
     from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
-    checkpointer = AsyncPostgresSaver.from_conn_string(settings.database_url_psycopg)
+    # from_conn_string returns an async context manager; enter it and keep the
+    # checkpointer reference alive for the bot's lifetime.
+    checkpointer_cm = AsyncPostgresSaver.from_conn_string(settings.database_url_psycopg)
+    checkpointer = await checkpointer_cm.__aenter__()
     await checkpointer.setup()
 
     graph = build_graph(bot)
     compiled_graph = graph.compile(checkpointer=checkpointer)
 
     dp["graph"] = compiled_graph
+    dp["_checkpointer_cm"] = checkpointer_cm  # prevent GC / allow cleanup
     logger.info("LangGraph state machine initialized ✓")
 
 
