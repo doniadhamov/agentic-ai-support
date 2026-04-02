@@ -19,6 +19,8 @@ from src.database.repositories import (
     get_recent_messages,
     get_recently_solved_threads,
 )
+from src.learning.episode_recorder import EpisodeRecorder
+from src.learning.example_selector import ExampleSelector
 
 
 def _format_conversation_history(messages: list[dict]) -> list[dict]:
@@ -51,7 +53,11 @@ def _format_conversation_history(messages: list[dict]) -> list[dict]:
     return formatted
 
 
-async def perceive_node(state: SupportState) -> dict:
+async def perceive_node(
+    state: SupportState,
+    episode_recorder: EpisodeRecorder | None = None,
+    example_selector: ExampleSelector | None = None,
+) -> dict:
     """Load all context needed by the think node."""
     t0 = time.monotonic()
     settings = get_settings()
@@ -59,6 +65,7 @@ async def perceive_node(state: SupportState) -> dict:
     group_id = int(state["group_id"])
     sender_id = int(state["sender_id"])
     reply_to_message_id = state.get("reply_to_message_id")
+    raw_text = state.get("raw_text", "")
 
     # 1. Conversation history
     raw_messages = await get_recent_messages(
@@ -107,12 +114,24 @@ async def perceive_node(state: SupportState) -> dict:
             reply_to_ticket_id = replied_msg.zendesk_ticket_id
             reply_to_text = replied_msg.text
 
+    # 7. Episodic memory — find similar past resolution episodes
+    relevant_episodes: list[dict] = []
+    if episode_recorder and raw_text:
+        relevant_episodes = await episode_recorder.find_similar_episodes(query=raw_text, limit=2)
+
+    # 8. Procedural memory — retrieve relevant few-shot decision examples
+    decision_examples: list[dict] = []
+    if example_selector and raw_text:
+        decision_examples = await example_selector.get_relevant_examples(query=raw_text, limit=5)
+
     elapsed_ms = int((time.monotonic() - t0) * 1000)
     logger.debug(
-        "perceive: group={} history={} active_tickets={} elapsed={}ms",
+        "perceive: group={} history={} active_tickets={} episodes={} examples={} elapsed={}ms",
         group_id,
         len(conversation_history),
         len(active_tickets),
+        len(relevant_episodes),
+        len(decision_examples),
         elapsed_ms,
     )
 
@@ -124,7 +143,7 @@ async def perceive_node(state: SupportState) -> dict:
         "bot_last_response": bot_last_response,
         "reply_to_ticket_id": reply_to_ticket_id,
         "reply_to_text": reply_to_text,
-        "relevant_episodes": [],  # Phase 4
-        "decision_examples": [],  # Phase 4
+        "relevant_episodes": relevant_episodes,
+        "decision_examples": decision_examples,
         "perceive_ms": elapsed_ms,
     }

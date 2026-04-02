@@ -15,6 +15,7 @@ from src.database.repositories import (
     update_thread_status,
 )
 from src.escalation.ticket_store import ConversationThreadStore
+from src.learning.episode_recorder import EpisodeRecorder
 from src.memory.approved_memory import ApprovedMemory
 
 if TYPE_CHECKING:
@@ -41,6 +42,7 @@ class ZendeskWebhookHandler:
         approved_memory: ApprovedMemory | None = None,
         bot_zendesk_user_id: int | None = None,
         api_account_user_id: int | None = None,
+        episode_recorder: EpisodeRecorder | None = None,
     ) -> None:
         self._bot = bot
         self._thread_store = thread_store
@@ -48,6 +50,7 @@ class ZendeskWebhookHandler:
         self._memory = approved_memory
         self._bot_zendesk_user_id = bot_zendesk_user_id
         self._api_account_user_id = api_account_user_id
+        self._episode_recorder = episode_recorder
 
     # ------------------------------------------------------------------
     # Public entry point
@@ -224,6 +227,9 @@ class ZendeskWebhookHandler:
                     group_id=thread.group_id,
                     summarizer=self._summarizer,
                     memory=self._memory,
+                    episode_recorder=self._episode_recorder,
+                    subject=thread.subject,
+                    user_id=thread.user_id,
                 )
                 if result:
                     logger.info(

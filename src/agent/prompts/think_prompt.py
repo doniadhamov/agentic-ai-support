@@ -79,36 +79,62 @@ Random photos with no support context = action=ignore.
 
 ## EXAMPLES
 
-Message: "Good morning everyone!" (no active tickets)
--> action=ignore, ticket_action=skip, language=en
-
-Message: "How do I update a load status to Delivered?"
--> action=answer, ticket_action=create_new, extracted_question="How to update load status to \
-Delivered?", language=en
-
-Message: "thanks that helped" (active ticket #101)
--> action=ignore, ticket_action=route_existing, ticket_id=101, language=en
-
-Message: "I have more questions" (active ticket #101, bot just answered)
--> action=wait, ticket_action=route_existing, ticket_id=101, language=en
-
-Message: "still not working after clearing cache" (active ticket #101: "Login issue")
--> action=escalate, ticket_action=route_existing, ticket_id=101, language=en
-
-Message: "@Xojiakbar_CS_DataTruck can you check my account?"
--> action=ignore, ticket_action=create_new, language=en
-
-Message: "The GPS is still not working after the fix" (solved ticket #200: "GPS sync issue")
--> action=escalate, ticket_action=follow_up, follow_up_source_id=200, language=en
-
-Message: "Как добавить нового водителя в систему?"
--> action=answer, ticket_action=create_new, extracted_question="Как добавить нового водителя \
-в систему?", language=ru
-
 {decision_examples}
 
 Now analyze the following message.
 """
 
-# Hardcoded few-shot examples for Phase 1 (Phase 4 will use dynamic examples from procedural memory)
-HARDCODED_DECISION_EXAMPLES = ""
+
+def format_decision_examples(examples: list[dict]) -> str:
+    """Format a list of decision example dicts into prompt text.
+
+    Each example dict should have: message, action, ticket_action, language,
+    and optionally: context, reasoning, urgency, extracted_question.
+    """
+    if not examples:
+        return "(no examples available)"
+
+    lines: list[str] = []
+    for ex in examples:
+        context = ex.get("context", "")
+        context_str = f" ({context})" if context else ""
+
+        parts = [
+            f'Message: "{ex["message"]}"{context_str}',
+            f"-> action={ex['action']}, ticket_action={ex['ticket_action']}, "
+            f"language={ex.get('language', 'en')}",
+        ]
+
+        extracted = ex.get("extracted_question")
+        if extracted:
+            parts[-1] += f', extracted_question="{extracted}"'
+
+        reasoning = ex.get("reasoning", "")
+        if reasoning:
+            parts.append(f"   Reasoning: {reasoning}")
+
+        lines.append("\n".join(parts))
+
+    return "\n\n".join(lines)
+
+
+def format_episode_context(episodes: list[dict]) -> str:
+    """Format relevant episodes into context text for the think prompt.
+
+    Shows how similar situations were resolved in the past.
+    """
+    if not episodes:
+        return ""
+
+    lines: list[str] = [
+        "## SIMILAR PAST EPISODES (for reference)",
+        "",
+    ]
+    for i, ep in enumerate(episodes, 1):
+        lines.append(f"Episode {i}: Ticket #{ep.get('ticket_id', '?')}")
+        lines.append(f"  Question: {ep.get('question', 'N/A')}")
+        lines.append(f"  Resolution: {ep.get('answer', 'N/A')[:200]}")
+        lines.append(f"  Action taken: {ep.get('action', 'N/A')}")
+        lines.append("")
+
+    return "\n".join(lines)

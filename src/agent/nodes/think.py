@@ -13,7 +13,11 @@ import anthropic
 from loguru import logger
 
 from src.agent.prompts.system_prompt import SYSTEM_PROMPT
-from src.agent.prompts.think_prompt import HARDCODED_DECISION_EXAMPLES, THINK_PROMPT
+from src.agent.prompts.think_prompt import (
+    THINK_PROMPT,
+    format_decision_examples,
+    format_episode_context,
+)
 from src.agent.state import SupportState
 from src.config.settings import get_settings
 from src.utils.retry import async_retry
@@ -167,8 +171,17 @@ async def think_node(state: SupportState) -> dict:
     client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
     model = settings.anthropic_fast_model
 
-    # Build prompt
-    prompt = THINK_PROMPT.format(decision_examples=HARDCODED_DECISION_EXAMPLES)
+    # Build prompt with dynamic examples and episode context
+    decision_examples = state.get("decision_examples", [])
+    examples_text = format_decision_examples(decision_examples)
+    prompt = THINK_PROMPT.format(decision_examples=examples_text)
+
+    # Add episode context if available
+    episodes = state.get("relevant_episodes", [])
+    episode_text = format_episode_context(episodes)
+    if episode_text:
+        prompt = f"{prompt}\n\n{episode_text}"
+
     context = _build_context_text(state)
 
     message_section = (
@@ -212,10 +225,7 @@ async def think_node(state: SupportState) -> dict:
         if action in {"route_existing", "create_new", "follow_up", "skip"}:
             ticket_action = action
         # Infer correct action: if there's a question extracted, answer it
-        if decision.get("extracted_question"):
-            action = "answer"
-        else:
-            action = "ignore"
+        action = "answer" if decision.get("extracted_question") else "ignore"
 
     logger.info(
         "think: action={} ticket_action={} urgency={} lang={} elapsed={}ms | {}",

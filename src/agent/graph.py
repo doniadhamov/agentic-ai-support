@@ -18,6 +18,8 @@ from src.agent.state import SupportState
 from src.escalation.profile_service import ZendeskProfileService
 from src.escalation.ticket_client import ZendeskTicketClient
 from src.escalation.ticket_store import ConversationThreadStore
+from src.learning.episode_recorder import EpisodeRecorder
+from src.learning.example_selector import ExampleSelector
 
 
 def build_graph(
@@ -26,17 +28,27 @@ def build_graph(
     profile_service: ZendeskProfileService | None = None,
     thread_store: ConversationThreadStore | None = None,
     bot_zendesk_user_id: int = 0,
+    episode_recorder: EpisodeRecorder | None = None,
+    example_selector: ExampleSelector | None = None,
 ) -> StateGraph:
     """Build and return the (uncompiled) support agent StateGraph.
 
     The `bot` instance is bound to the respond node via functools.partial
     so it can send Telegram messages. Zendesk services are bound to the
-    remember node for bidirectional sync.
+    remember node for bidirectional sync. Episodic and procedural memory
+    services are bound to the perceive node.
     """
     graph = StateGraph(SupportState)
 
     # Add nodes
-    graph.add_node("perceive", perceive_node)
+    graph.add_node(
+        "perceive",
+        partial(
+            perceive_node,
+            episode_recorder=episode_recorder,
+            example_selector=example_selector,
+        ),
+    )
     graph.add_node("think", think_node)
     graph.add_node("retrieve", retrieve_node)
     graph.add_node("generate", generate_node)
