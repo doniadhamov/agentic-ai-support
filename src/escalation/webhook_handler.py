@@ -7,16 +7,15 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
+from src.agent.nodes.learn import learn_from_ticket
 from src.agent.ticket_summarizer import TicketSummarizer
 from src.database.repositories import (
-    get_messages_by_ticket_id,
     get_root_message_id,
     save_message,
     update_thread_status,
 )
 from src.escalation.ticket_store import ConversationThreadStore
 from src.memory.approved_memory import ApprovedMemory
-from src.memory.memory_schemas import ApprovedAnswer
 
 if TYPE_CHECKING:
     from aiogram import Bot
@@ -217,28 +216,24 @@ class ZendeskWebhookHandler:
             logger.warning("Webhook: no thread to close for ticket={}", ticket_id)
             return {"status": "updated", "ticket_id": ticket_id, "new_status": new_status}
 
-        # Summarize and store in memory
+        # Extract Q&A from resolved conversation and store in memory
         if self._memory is not None:
             try:
-                messages = await get_messages_by_ticket_id(ticket_id_int)
-                if messages:
-                    summary = await self._summarizer.summarize(messages)
-                    await self._memory.store(
-                        ApprovedAnswer(
-                            question=summary["question"],
-                            answer=summary["answer"],
-                            ticket_id=ticket_id_int,
-                            group_id=thread.group_id,
-                        )
-                    )
+                result = await learn_from_ticket(
+                    ticket_id=ticket_id_int,
+                    group_id=thread.group_id,
+                    summarizer=self._summarizer,
+                    memory=self._memory,
+                )
+                if result:
                     logger.info(
-                        "Webhook: stored memory for closed ticket={} q={!r}",
+                        "Webhook: learned from ticket={} q={!r}",
                         ticket_id,
-                        summary["question"][:60],
+                        result["question"][:60],
                     )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 logger.error(
-                    "Webhook: failed to summarize/store memory for ticket={}: {}",
+                    "Webhook: failed to learn from ticket={}: {}",
                     ticket_id,
                     exc,
                 )
