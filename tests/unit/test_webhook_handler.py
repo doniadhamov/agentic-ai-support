@@ -87,9 +87,7 @@ async def test_empty_event_type_rejected(handler: ZendeskWebhookHandler) -> None
 
 @pytest.mark.asyncio
 async def test_missing_source_telegram_tag_rejected(handler: ZendeskWebhookHandler) -> None:
-    result = await handler.handle_event(
-        _make_payload(tags=["production", "auto_route"])
-    )
+    result = await handler.handle_event(_make_payload(tags=["production", "auto_route"]))
     assert result["status"] == "ignored"
     assert "source_telegram" in result["reason"]
 
@@ -151,9 +149,7 @@ async def test_comment_delivered_to_telegram(
 async def test_comment_skipped_for_api_originated(handler: ZendeskWebhookHandler) -> None:
     """Comments originating from our API account are ignored (actor_id filter)."""
     handler._api_account_user_id = 33333
-    result = await handler.handle_event(
-        _make_payload(author_id="12345", actor_id="33333")
-    )
+    result = await handler.handle_event(_make_payload(author_id="12345", actor_id="33333"))
     assert result["status"] == "ignored"
     assert "API-originated" in result["reason"]
 

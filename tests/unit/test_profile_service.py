@@ -16,7 +16,9 @@ from src.escalation.profile_service import ZendeskProfileService
 
 class TestResolveDisplayName:
     def test_first_and_last_name(self) -> None:
-        assert ZendeskProfileService.resolve_display_name("John", "Doe", "johndoe", 123) == "John Doe"
+        assert (
+            ZendeskProfileService.resolve_display_name("John", "Doe", "johndoe", 123) == "John Doe"
+        )
 
     def test_first_name_only(self) -> None:
         assert ZendeskProfileService.resolve_display_name("John", None, "johndoe", 123) == "John"
