@@ -2,183 +2,14 @@
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
+from datetime import UTC, datetime, timedelta
 
+import pandas as pd
 import streamlit as st
 
+from src.admin.dashboard.styles import SHARED_CSS, sidebar_branding
 from src.admin.dashboard.utils import run_async
 from src.config.settings import get_settings
-
-# ---------------------------------------------------------------------------
-# Custom CSS
-# ---------------------------------------------------------------------------
-CUSTOM_CSS = """
-<style>
-/* Global font & background */
-section[data-testid="stSidebar"] {
-    background: linear-gradient(180deg, #1a1a2e 0%, #16213e 100%);
-}
-section[data-testid="stSidebar"] .stMarkdown p,
-section[data-testid="stSidebar"] .stMarkdown li,
-section[data-testid="stSidebar"] .stMarkdown a,
-section[data-testid="stSidebar"] span {
-    color: #e0e0e0 !important;
-}
-section[data-testid="stSidebar"] hr {
-    border-color: rgba(255,255,255,0.15) !important;
-}
-
-/* Metric cards */
-div[data-testid="stMetric"] {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    border-radius: 12px;
-    padding: 20px 24px;
-    color: white !important;
-    box-shadow: 0 4px 15px rgba(102,126,234,0.3);
-}
-div[data-testid="stMetric"] label {
-    color: rgba(255,255,255,0.85) !important;
-    font-size: 0.85rem !important;
-    font-weight: 500 !important;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-div[data-testid="stMetric"] [data-testid="stMetricValue"] {
-    color: white !important;
-    font-size: 2rem !important;
-    font-weight: 700 !important;
-}
-
-/* Navigation cards on home */
-.nav-card {
-    background: white;
-    border-radius: 12px;
-    padding: 28px 24px;
-    border: 1px solid #e8ecf1;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-    transition: all 0.2s ease;
-    min-height: 180px;
-}
-.nav-card:hover {
-    box-shadow: 0 8px 25px rgba(0,0,0,0.1);
-    transform: translateY(-2px);
-    border-color: #667eea;
-}
-.nav-card .card-icon {
-    font-size: 2.5rem;
-    margin-bottom: 12px;
-}
-.nav-card h3 {
-    margin: 0 0 8px 0;
-    font-size: 1.2rem;
-    font-weight: 600;
-    color: #1a1a2e;
-}
-.nav-card p {
-    margin: 0;
-    color: #6b7280;
-    font-size: 0.9rem;
-    line-height: 1.5;
-}
-.nav-card .card-stat {
-    margin-top: 16px;
-    padding-top: 12px;
-    border-top: 1px solid #f0f0f0;
-    font-size: 0.85rem;
-    color: #667eea;
-    font-weight: 600;
-}
-
-/* Status badges */
-.status-badge {
-    display: inline-block;
-    padding: 4px 12px;
-    border-radius: 20px;
-    font-size: 0.8rem;
-    font-weight: 600;
-    letter-spacing: 0.3px;
-}
-.status-active { background: #d1fae5; color: #065f46; }
-.status-inactive { background: #fef3c7; color: #92400e; }
-.status-open { background: #dbeafe; color: #1e40af; }
-.status-answered { background: #d1fae5; color: #065f46; }
-.status-closed { background: #f3f4f6; color: #4b5563; }
-
-/* Better buttons */
-.stButton > button[kind="primary"] {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-    border: none !important;
-    border-radius: 8px !important;
-    padding: 8px 24px !important;
-    font-weight: 600 !important;
-    box-shadow: 0 2px 8px rgba(102,126,234,0.3) !important;
-}
-
-/* Section headers */
-.section-header {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin: 24px 0 16px 0;
-    padding-bottom: 8px;
-    border-bottom: 2px solid #667eea;
-}
-.section-header h3 {
-    margin: 0;
-    color: #1a1a2e;
-    font-weight: 600;
-}
-
-/* Dataframe styling */
-.stDataFrame {
-    border-radius: 8px !important;
-    overflow: hidden;
-}
-
-/* Delete button red */
-button[kind="secondary"] {
-    border-radius: 8px !important;
-}
-
-/* Alert boxes */
-.stAlert {
-    border-radius: 8px !important;
-}
-
-/* Page header with subtitle */
-.page-header {
-    margin-bottom: 24px;
-}
-.page-header h1 {
-    margin-bottom: 4px;
-}
-.page-header p {
-    color: #6b7280;
-    font-size: 1rem;
-    margin-top: 0;
-}
-
-/* Welcome banner */
-.welcome-banner {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    border-radius: 16px;
-    padding: 40px 48px;
-    color: white;
-    margin-bottom: 32px;
-}
-.welcome-banner h1 {
-    color: white !important;
-    font-size: 2rem;
-    margin-bottom: 8px;
-}
-.welcome-banner p {
-    color: rgba(255,255,255,0.85);
-    font-size: 1.1rem;
-    margin: 0;
-}
-</style>
-"""
 
 
 def _check_auth() -> bool:
@@ -190,7 +21,7 @@ def _check_auth() -> bool:
     if st.session_state.get("authenticated"):
         return True
 
-    st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
+    st.markdown(SHARED_CSS, unsafe_allow_html=True)
     st.markdown(
         '<div class="welcome-banner">'
         "<h1>DataTruck Admin</h1>"
@@ -210,23 +41,6 @@ def _check_auth() -> bool:
     return False
 
 
-def _load_ticket_counts() -> dict[str, int]:
-    """Load ticket status counts from tickets.json."""
-    tickets_path = Path("data/tickets.json")
-    counts: dict[str, int] = {"total": 0, "open": 0, "answered": 0, "closed": 0}
-    if tickets_path.exists():
-        try:
-            raw = json.loads(tickets_path.read_text())
-            counts["total"] = len(raw)
-            for record in raw.values():
-                status = record.get("status", "").lower()
-                if status in counts:
-                    counts[status] += 1
-        except Exception:
-            pass
-    return counts
-
-
 def main() -> None:
     st.set_page_config(
         page_title="DataTruck Admin",
@@ -237,37 +51,40 @@ def main() -> None:
     if not _check_auth():
         st.stop()
 
-    st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
+    st.markdown(SHARED_CSS, unsafe_allow_html=True)
 
     # --- Welcome banner ---
     st.markdown(
         '<div class="welcome-banner">'
         "<h1>DataTruck Admin Dashboard</h1>"
-        "<p>Monitor and manage your AI support bot — groups, knowledge base, documents, and tickets</p>"
+        "<p>Monitor and manage your AI support bot — performance, knowledge, decisions, and conversations</p>"
         "</div>",
         unsafe_allow_html=True,
     )
 
-    # --- Quick stats row ---
-    from src.database.repositories import get_all_telegram_groups
+    # --- Load data ---
+    from src.database.repositories import (
+        get_all_telegram_groups,
+        get_decision_stats,
+    )
 
+    today_start = datetime.now(tz=UTC).replace(hour=0, minute=0, second=0, microsecond=0)
     all_groups = run_async(get_all_telegram_groups())
-    groups = [g for g in all_groups if g.active]
-    ticket_counts = _load_ticket_counts()
+    active_groups = [g for g in all_groups if g.active]
 
-    # Try to get Qdrant point counts and distinct article count
-    docs_count = 0
-    docs_articles = 0
+    # Today's decision stats
+    today_stats = run_async(get_decision_stats(date_from=today_start))
+
+    # Qdrant counts
     memory_count = 0
+    docs_articles = 0
     try:
         from src.vector_db.collections import DOCS_COLLECTION, MEMORY_COLLECTION
         from src.vector_db.qdrant_client import get_qdrant_client
 
         qdrant = get_qdrant_client()
-        docs_count = run_async(qdrant.count_points(DOCS_COLLECTION))
         memory_count = run_async(qdrant.count_points(MEMORY_COLLECTION))
 
-        # Count distinct article_ids by scrolling all points
         async def _count_articles() -> int:
             article_ids: set = set()
             offset = None
@@ -283,38 +100,111 @@ def main() -> None:
                     break
             return len(article_ids)
 
-        if docs_count > 0:
-            docs_articles = run_async(_count_articles())
+        docs_articles = run_async(_count_articles())
     except Exception:
         pass
 
-    c1, c2, c3, c4 = st.columns(4)
+    # Open tickets count
+    open_tickets = 0
+    try:
+        from src.database.repositories import get_open_tickets_by_group
+
+        tickets_by_group = run_async(get_open_tickets_by_group())
+        open_tickets = sum(tickets_by_group.values())
+    except Exception:
+        pass
+
+    # --- Quick stats row ---
+    total_today = today_stats["total"]
+    by_action = today_stats["by_action"]
+    answered_today = by_action.get("answer", 0)
+    escalated_today = by_action.get("escalate", 0)
+
+    c1, c2, c3, c4, c5 = st.columns(5)
     with c1:
-        st.metric("Active Groups", len(groups))
+        st.metric("Messages Today", total_today)
     with c2:
-        st.metric("Ingested Articles", f"{docs_articles:,}")
+        pct = f"({answered_today * 100 // total_today}%)" if total_today else ""
+        st.metric("Answered Today", f"{answered_today} {pct}")
     with c3:
-        st.metric("Memory Entries", f"{memory_count:,}")
+        pct = f"({escalated_today * 100 // total_today}%)" if total_today else ""
+        st.metric("Escalated Today", f"{escalated_today} {pct}")
     with c4:
-        st.metric("Open Tickets", ticket_counts["open"])
+        st.metric("Learned Q&A", f"{memory_count:,}")
+    with c5:
+        st.metric("Active Groups", len(active_groups))
+
+    st.markdown("")
+
+    # --- Action distribution & Recent activity ---
+    col_left, col_right = st.columns([1, 2])
+
+    with col_left:
+        st.markdown("#### Action Distribution (Today)")
+        if total_today > 0:
+            action_df = pd.DataFrame(
+                [{"Action": action, "Count": count} for action, count in sorted(by_action.items())]
+            )
+            st.bar_chart(action_df.set_index("Action"), horizontal=True)
+        else:
+            st.info("No decisions recorded today yet.")
+
+    with col_right:
+        st.markdown("#### Trend (Last 30 Days)")
+        stats_30d = run_async(
+            get_decision_stats(date_from=datetime.now(tz=UTC) - timedelta(days=30))
+        )
+        if stats_30d["by_date"]:
+            trend_df = pd.DataFrame(stats_30d["by_date"])
+            trend_df["date"] = pd.to_datetime(trend_df["date"])
+            pivot = trend_df.pivot_table(
+                index="date", columns="action", values="count", fill_value=0
+            )
+            st.line_chart(pivot)
+        else:
+            st.info("No data for trend chart yet.")
+
+    st.divider()
+
+    # --- Recent bot decisions ---
+    st.markdown("#### Recent Bot Decisions")
+    from src.database.repositories import get_bot_decisions
+
+    recent = run_async(get_bot_decisions(limit=10))
+    if recent:
+        rows = []
+        for d in recent:
+            rows.append(
+                {
+                    "Time": str(d.created_at)[:19] if d.created_at else "",
+                    "Group": d.group_id,
+                    "User": d.user_id,
+                    "Message": (d.message_text or "")[:60],
+                    "Action": d.action,
+                    "Ticket Action": d.ticket_action,
+                    "Ticket": d.target_ticket_id or "",
+                    "Total ms": d.total_ms or "",
+                }
+            )
+        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+    else:
+        st.info(
+            "No bot decisions recorded yet. Decisions will appear here as messages are processed."
+        )
 
     st.markdown("")
 
     # --- Navigation cards ---
-    col1, col2, col3, col4 = st.columns(4)
+    st.markdown("#### Quick Navigation")
+    col1, col2, col3 = st.columns(3)
 
     with col1:
-        status_class = "status-active" if groups else "status-inactive"
-        status_text = "Active" if groups else "Inactive"
         st.markdown(
             f"""<div class="nav-card">
-                <div class="card-icon">👥</div>
-                <h3>Groups</h3>
-                <p>Manage Telegram group allowlist. Add or remove groups that the bot monitors.</p>
-                <div class="card-stat">
-                    <span class="status-badge {status_class}">{status_text}</span>
-                    &nbsp; {len(groups)} group(s)
-                </div>
+                <div class="card-icon">📊</div>
+                <h3>Performance</h3>
+                <p>Analytics, trends, top questions, and response time breakdown.</p>
+                <div class="card-stat">{total_today} decisions today</div>
             </div>""",
             unsafe_allow_html=True,
         )
@@ -324,47 +214,62 @@ def main() -> None:
             f"""<div class="nav-card">
                 <div class="card-icon">📚</div>
                 <h3>Knowledge Base</h3>
-                <p>Browse Qdrant collections, view vectors, and sync with Zendesk.</p>
-                <div class="card-stat">{docs_articles:,} articles &bull; {docs_count:,} chunks &bull; {memory_count:,} memories</div>
+                <p>Documentation, learned Q&A, quick add, Zendesk import, and uploads.</p>
+                <div class="card-stat">{docs_articles} articles &bull; {memory_count} memories</div>
             </div>""",
             unsafe_allow_html=True,
         )
 
     with col3:
         st.markdown(
-            """<div class="nav-card">
-                <div class="card-icon">📄</div>
-                <h3>Upload</h3>
-                <p>Ingest PDF, DOCX, TXT, and Markdown files into the knowledge base.</p>
-                <div class="card-stat">Drag & drop supported</div>
+            f"""<div class="nav-card">
+                <div class="card-icon">🔍</div>
+                <h3>Decision Review</h3>
+                <p>Review and correct bot decisions to improve accuracy over time.</p>
+                <div class="card-stat">{open_tickets} open tickets</div>
             </div>""",
             unsafe_allow_html=True,
         )
 
+    col4, col5, col6 = st.columns(3)
+
     with col4:
-        open_count = ticket_counts["open"]
-        badge = (
-            f'<span class="status-badge status-open">{open_count} open</span>'
-            if open_count > 0
-            else '<span class="status-badge status-closed">No open tickets</span>'
+        st.markdown(
+            """<div class="nav-card">
+                <div class="card-icon">💬</div>
+                <h3>Conversations</h3>
+                <p>Monitor live conversations across all groups.</p>
+            </div>""",
+            unsafe_allow_html=True,
         )
+
+    with col5:
+        status_class = "status-active" if active_groups else "status-inactive"
+        status_text = "Active" if active_groups else "Inactive"
         st.markdown(
             f"""<div class="nav-card">
-                <div class="card-icon">🎫</div>
-                <h3>Tickets</h3>
-                <p>View escalated support questions and their resolution status.</p>
+                <div class="card-icon">👥</div>
+                <h3>Groups</h3>
+                <p>Manage Telegram group allowlist.</p>
                 <div class="card-stat">
-                    {badge}
-                    &nbsp; {ticket_counts["total"]} total
+                    <span class="status-badge {status_class}">{status_text}</span>
+                    &nbsp; {len(active_groups)} group(s)
                 </div>
             </div>""",
             unsafe_allow_html=True,
         )
 
-    # --- Sidebar branding ---
-    with st.sidebar:
-        st.markdown("---")
-        st.markdown("**DataTruck Admin** v1.0\n\nAI-powered support bot management console.")
+    with col6:
+        st.markdown(
+            """<div class="nav-card">
+                <div class="card-icon">🎫</div>
+                <h3>Tickets</h3>
+                <p>View conversation threads and Zendesk tickets.</p>
+            </div>""",
+            unsafe_allow_html=True,
+        )
+
+    sidebar_branding()
 
 
 if __name__ == "__main__":

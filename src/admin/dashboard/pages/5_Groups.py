@@ -4,43 +4,28 @@ from __future__ import annotations
 
 import streamlit as st
 
+from src.admin.dashboard.styles import SHARED_CSS, sidebar_branding
 from src.admin.dashboard.utils import run_async
 from src.database.repositories import (
     add_telegram_group,
     get_all_telegram_groups,
+    get_group_message_counts_today,
+    get_open_tickets_by_group,
     remove_telegram_group,
     set_group_active,
 )
 
 st.set_page_config(page_title="Groups — DataTruck Admin", layout="wide")
+st.markdown(SHARED_CSS, unsafe_allow_html=True)
 
-# --- Custom CSS ---
-st.markdown(
-    """
-<style>
-div[data-testid="stMetric"] {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    border-radius: 12px;
-    padding: 20px 24px;
-    color: white !important;
-    box-shadow: 0 4px 15px rgba(102,126,234,0.3);
-}
-div[data-testid="stMetric"] label { color: rgba(255,255,255,0.85) !important; font-weight: 500 !important; text-transform: uppercase; letter-spacing: 0.5px; }
-div[data-testid="stMetric"] [data-testid="stMetricValue"] { color: white !important; font-size: 2rem !important; font-weight: 700 !important; }
-section[data-testid="stSidebar"] { background: linear-gradient(180deg, #1a1a2e 0%, #16213e 100%); }
-section[data-testid="stSidebar"] .stMarkdown p, section[data-testid="stSidebar"] .stMarkdown a, section[data-testid="stSidebar"] span { color: #e0e0e0 !important; }
-</style>
-""",
-    unsafe_allow_html=True,
-)
-
-# --- Page header ---
 st.title("👥 Telegram Groups")
 st.caption("Manage which Telegram groups the bot monitors and responds in.")
 
-# --- Load groups from DB ---
+# --- Load data ---
 groups = run_async(get_all_telegram_groups())
 active_groups = [g for g in groups if g.active]
+msg_counts = run_async(get_group_message_counts_today())
+ticket_counts = run_async(get_open_tickets_by_group())
 
 # --- Status metrics ---
 col1, col2, col3 = st.columns(3)
@@ -73,17 +58,13 @@ with st.form("add_group", clear_on_submit=True):
             value=0,
             step=1,
             format="%d",
-            help="Telegram group chat ID (negative number for groups/supergroups). "
-            "You can get this from the bot logs or using @userinfobot.",
+            help="Telegram group chat ID (negative number for groups/supergroups).",
         )
     with col2:
-        group_name = st.text_input(
-            "Display Name",
-            placeholder="e.g. DataTruck Support RU",
-        )
+        group_name = st.text_input("Display Name", placeholder="e.g. DataTruck Support RU")
     with col3:
         st.markdown("<br>", unsafe_allow_html=True)
-        submitted = st.form_submit_button("➕ Add Group", type="primary", use_container_width=True)
+        submitted = st.form_submit_button("Add Group", type="primary", use_container_width=True)
 
     if submitted:
         if group_id == 0:
@@ -101,7 +82,7 @@ if not groups:
     st.info("No groups registered yet. The bot will respond to messages from all groups.")
 else:
     search = st.text_input(
-        "🔍 Search groups",
+        "Search groups",
         placeholder="Filter by name or ID...",
         label_visibility="collapsed",
     )
@@ -118,49 +99,50 @@ else:
     if not filtered:
         st.warning("No groups match your search.")
     else:
-        hdr1, hdr2, hdr3, hdr4, hdr5 = st.columns([2, 3, 2, 1, 1])
-        with hdr1:
-            st.markdown("**Group ID**")
-        with hdr2:
-            st.markdown("**Name**")
-        with hdr3:
-            st.markdown("**Created**")
-        with hdr4:
-            st.markdown("**Status**")
-        with hdr5:
-            st.markdown("**Action**")
+        # Table header
+        hdr = st.columns([2, 3, 1, 1, 1, 1, 1])
+        headers = ["Group ID", "Name", "Msgs Today", "Open Tickets", "Status", "Created", "Actions"]
+        for h, label in zip(hdr, headers, strict=True):
+            with h:
+                st.markdown(f"**{label}**")
 
         for group in filtered:
-            c1, c2, c3, c4, c5 = st.columns([2, 3, 2, 1, 1])
-            with c1:
-                st.code(str(group.telegram_chat_id), language=None)
-            with c2:
+            c = st.columns([2, 3, 1, 1, 1, 1, 1])
+            chat_id = group.telegram_chat_id
+            with c[0]:
+                st.code(str(chat_id), language=None)
+            with c[1]:
                 st.markdown(f"**{group.title}**" if group.title else "*Unnamed*")
-            with c3:
-                st.caption(group.created_at.strftime("%b %d, %Y  %H:%M UTC"))
-            with c4:
-                if group.active:
-                    st.markdown("🟢 Active")
+            with c[2]:
+                count = msg_counts.get(chat_id, 0)
+                st.markdown(f"**{count}**" if count > 0 else "0")
+            with c[3]:
+                tickets = ticket_counts.get(chat_id, 0)
+                if tickets > 0:
+                    st.markdown(
+                        f'<span class="status-badge status-open">{tickets}</span>',
+                        unsafe_allow_html=True,
+                    )
                 else:
-                    st.markdown("🔴 Inactive")
-            with c5:
-                btn_col1, btn_col2 = st.columns(2)
-                with btn_col1:
+                    st.markdown("0")
+            with c[4]:
+                st.markdown("🟢 Active" if group.active else "🔴 Inactive")
+            with c[5]:
+                st.caption(group.created_at.strftime("%b %d, %Y") if group.created_at else "—")
+            with c[6]:
+                btn_c1, btn_c2 = st.columns(2)
+                with btn_c1:
                     toggle_label = "⏸️" if group.active else "▶️"
                     toggle_help = "Deactivate" if group.active else "Activate"
-                    if st.button(
-                        toggle_label, key=f"toggle_{group.telegram_chat_id}", help=toggle_help
-                    ):
-                        run_async(set_group_active(group.telegram_chat_id, not group.active))
+                    if st.button(toggle_label, key=f"toggle_{chat_id}", help=toggle_help):
+                        run_async(set_group_active(chat_id, not group.active))
                         st.rerun()
-                with btn_col2:
-                    if st.button("🗑️", key=f"del_{group.telegram_chat_id}", help="Remove group"):
-                        run_async(remove_telegram_group(group.telegram_chat_id))
+                with btn_c2:
+                    if st.button("🗑️", key=f"del_{chat_id}", help="Remove group"):
+                        run_async(remove_telegram_group(chat_id))
                         st.rerun()
 
     st.caption(f"Showing {len(filtered)} of {len(groups)} group(s)")
 
-# --- Sidebar ---
-with st.sidebar:
-    st.markdown("---")
-    st.markdown("**DataTruck Admin** v1.0\n\nAI-powered support bot management console.")
+
+sidebar_branding()

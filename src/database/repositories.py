@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 from loguru import logger
-from sqlalchemy import delete, desc, select, update
+from sqlalchemy import delete, desc, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from src.database.engine import get_session_factory
@@ -646,3 +646,241 @@ async def save_bot_decision(
             )
         )
         await session.commit()
+
+
+# ---------------------------------------------------------------------------
+# Bot decision repository — for admin dashboard
+# ---------------------------------------------------------------------------
+
+
+async def get_bot_decisions(
+    *,
+    group_id: int | None = None,
+    action_filter: str | None = None,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+    search_text: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> list[BotDecision]:
+    """Query bot decisions with optional filters for the Decision Review page."""
+    factory = get_session_factory()
+    async with factory() as session:
+        stmt = select(BotDecision).order_by(desc(BotDecision.created_at))
+        if group_id is not None:
+            stmt = stmt.where(BotDecision.group_id == group_id)
+        if action_filter:
+            stmt = stmt.where(BotDecision.action == action_filter)
+        if date_from:
+            stmt = stmt.where(BotDecision.created_at >= date_from)
+        if date_to:
+            stmt = stmt.where(BotDecision.created_at <= date_to)
+        if search_text:
+            stmt = stmt.where(BotDecision.message_text.ilike(f"%{search_text}%"))
+        stmt = stmt.offset(offset).limit(limit)
+        result = await session.execute(stmt)
+        return list(result.scalars().all())
+
+
+async def get_decision_stats(
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+) -> dict:
+    """Aggregate stats from bot_decisions for Overview and Performance pages.
+
+    Returns dict with: total, by_action, by_date (daily), avg_timing, top_escalated, top_answered.
+    """
+    factory = get_session_factory()
+    async with factory() as session:
+        # Total count
+        total_stmt = select(func.count(BotDecision.id))
+        if date_from:
+            total_stmt = total_stmt.where(BotDecision.created_at >= date_from)
+        if date_to:
+            total_stmt = total_stmt.where(BotDecision.created_at <= date_to)
+        total = (await session.execute(total_stmt)).scalar() or 0
+
+        # Count by action
+        action_stmt = select(BotDecision.action, func.count(BotDecision.id)).group_by(
+            BotDecision.action
+        )
+        if date_from:
+            action_stmt = action_stmt.where(BotDecision.created_at >= date_from)
+        if date_to:
+            action_stmt = action_stmt.where(BotDecision.created_at <= date_to)
+        action_rows = (await session.execute(action_stmt)).all()
+        by_action = {row[0]: row[1] for row in action_rows}
+
+        # Daily counts by action (for trend chart)
+        day_col = func.date_trunc("day", BotDecision.created_at).label("day")
+        daily_stmt = (
+            select(day_col, BotDecision.action, func.count(BotDecision.id))
+            .group_by(day_col, BotDecision.action)
+            .order_by(day_col)
+        )
+        if date_from:
+            daily_stmt = daily_stmt.where(BotDecision.created_at >= date_from)
+        if date_to:
+            daily_stmt = daily_stmt.where(BotDecision.created_at <= date_to)
+        daily_rows = (await session.execute(daily_stmt)).all()
+        by_date: list[dict] = [
+            {"date": row[0], "action": row[1], "count": row[2]} for row in daily_rows
+        ]
+
+        # Average timing
+        timing_stmt = select(
+            func.avg(BotDecision.perceive_ms).label("perceive"),
+            func.avg(BotDecision.think_ms).label("think"),
+            func.avg(BotDecision.retrieve_ms).label("retrieve"),
+            func.avg(BotDecision.generate_ms).label("generate"),
+            func.avg(BotDecision.total_ms).label("total"),
+        )
+        if date_from:
+            timing_stmt = timing_stmt.where(BotDecision.created_at >= date_from)
+        if date_to:
+            timing_stmt = timing_stmt.where(BotDecision.created_at <= date_to)
+        timing_row = (await session.execute(timing_stmt)).one()
+        avg_timing = {
+            "perceive": round(timing_row[0] or 0),
+            "think": round(timing_row[1] or 0),
+            "retrieve": round(timing_row[2] or 0),
+            "generate": round(timing_row[3] or 0),
+            "total": round(timing_row[4] or 0),
+        }
+
+        # Top escalated questions
+        esc_stmt = (
+            select(
+                BotDecision.extracted_question,
+                func.count(BotDecision.id).label("cnt"),
+            )
+            .where(
+                BotDecision.action == "escalate",
+                BotDecision.extracted_question.isnot(None),
+                BotDecision.extracted_question != "",
+            )
+            .group_by(BotDecision.extracted_question)
+            .order_by(desc("cnt"))
+            .limit(10)
+        )
+        if date_from:
+            esc_stmt = esc_stmt.where(BotDecision.created_at >= date_from)
+        if date_to:
+            esc_stmt = esc_stmt.where(BotDecision.created_at <= date_to)
+        esc_rows = (await session.execute(esc_stmt)).all()
+        top_escalated = [{"question": r[0], "count": r[1]} for r in esc_rows]
+
+        # Top answered questions
+        ans_stmt = (
+            select(
+                BotDecision.extracted_question,
+                func.count(BotDecision.id).label("cnt"),
+                func.avg(BotDecision.retrieval_confidence).label("avg_conf"),
+            )
+            .where(
+                BotDecision.action == "answer",
+                BotDecision.extracted_question.isnot(None),
+                BotDecision.extracted_question != "",
+            )
+            .group_by(BotDecision.extracted_question)
+            .order_by(desc("cnt"))
+            .limit(10)
+        )
+        if date_from:
+            ans_stmt = ans_stmt.where(BotDecision.created_at >= date_from)
+        if date_to:
+            ans_stmt = ans_stmt.where(BotDecision.created_at <= date_to)
+        ans_rows = (await session.execute(ans_stmt)).all()
+        top_answered = [
+            {"question": r[0], "count": r[1], "avg_confidence": round(r[2] or 0, 2)}
+            for r in ans_rows
+        ]
+
+        return {
+            "total": total,
+            "by_action": by_action,
+            "by_date": by_date,
+            "avg_timing": avg_timing,
+            "top_escalated": top_escalated,
+            "top_answered": top_answered,
+        }
+
+
+async def update_decision_correction(
+    decision_id: int,
+    is_correct: bool,
+    correct_action: str | None = None,
+) -> None:
+    """Mark a bot decision as correct or incorrect (admin review)."""
+    factory = get_session_factory()
+    async with factory() as session:
+        values: dict = {
+            "is_correct": is_correct,
+            "reviewed_at": datetime.now(tz=UTC),
+        }
+        if correct_action:
+            values["correct_action"] = correct_action
+        stmt = update(BotDecision).where(BotDecision.id == decision_id).values(**values)
+        await session.execute(stmt)
+        await session.commit()
+
+
+async def get_messages_for_group(
+    chat_id: int,
+    limit: int = 100,
+    offset: int = 0,
+) -> list[dict]:
+    """Load messages for a group with pagination (for Conversations page)."""
+    factory = get_session_factory()
+    async with factory() as session:
+        stmt = (
+            select(Message)
+            .where(Message.chat_id == chat_id)
+            .order_by(desc(Message.created_at))
+            .offset(offset)
+            .limit(limit)
+        )
+        result = await session.execute(stmt)
+        rows = list(result.scalars().all())
+    rows.reverse()  # oldest first
+    return [
+        {
+            "message_id": r.message_id,
+            "user_id": r.user_id,
+            "username": r.username,
+            "text": r.text,
+            "source": r.source,
+            "file_type": r.file_type,
+            "file_description": r.file_description,
+            "zendesk_ticket_id": r.zendesk_ticket_id,
+            "created_at": r.created_at,
+        }
+        for r in rows
+    ]
+
+
+async def get_group_message_counts_today() -> dict[int, int]:
+    """Return {chat_id: message_count} for today's messages, grouped by chat_id."""
+    factory = get_session_factory()
+    today_start = datetime.now(tz=UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+    async with factory() as session:
+        stmt = (
+            select(Message.chat_id, func.count(Message.id))
+            .where(Message.created_at >= today_start)
+            .group_by(Message.chat_id)
+        )
+        result = await session.execute(stmt)
+        return {row[0]: row[1] for row in result.all()}
+
+
+async def get_open_tickets_by_group() -> dict[int, int]:
+    """Return {group_id: open_ticket_count} for all groups."""
+    factory = get_session_factory()
+    async with factory() as session:
+        stmt = (
+            select(ConversationThread.group_id, func.count(ConversationThread.id))
+            .where(ConversationThread.status.in_(["open", "pending"]))
+            .group_by(ConversationThread.group_id)
+        )
+        result = await session.execute(stmt)
+        return {row[0]: row[1] for row in result.all()}
