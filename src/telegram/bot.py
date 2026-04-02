@@ -14,18 +14,14 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from loguru import logger
 
-from src.agent.agent import create_support_agent
+from src.agent.graph import build_graph
 from src.config.settings import get_settings
-from src.telegram.context.context_manager import ContextManager
 from src.telegram.handlers.message_handler import router as message_router
 from src.utils.logging import setup_logging
 
 
 def create_bot() -> tuple[Bot, Dispatcher]:
     """Instantiate the :class:`Bot` and :class:`Dispatcher`, wire all handlers.
-
-    Dependencies are injected into the Dispatcher's workflow data so that
-    handler functions receive them as typed parameters.
 
     Returns:
         A ``(bot, dp)`` tuple ready for long-polling or webhook mode.
@@ -39,13 +35,6 @@ def create_bot() -> tuple[Bot, Dispatcher]:
 
     dp = Dispatcher()
 
-    # --- Core agent (no more ticket_client/ticket_store) ----------------------
-    agent = create_support_agent()
-    context_manager = ContextManager()
-
-    dp["agent"] = agent
-    dp["context_manager"] = context_manager
-
     # --- Register routers ---------------------------------------------------
     dp.include_router(message_router)
 
@@ -54,10 +43,10 @@ def create_bot() -> tuple[Bot, Dispatcher]:
 
 
 async def _init_database() -> None:
-    """Create database tables (PostgreSQL required for Zendesk sync)."""
+    """Create database tables (PostgreSQL required)."""
     settings = get_settings()
     if not settings.database_url:
-        logger.warning("DATABASE_URL not set — Zendesk sync will not work")
+        logger.warning("DATABASE_URL not set — database features will not work")
         return
     from src.database.engine import get_engine
     from src.database.models import Base
@@ -68,18 +57,35 @@ async def _init_database() -> None:
     logger.info("Database tables ensured ✓")
 
 
+async def _init_langgraph(bot: Bot, dp: Dispatcher) -> None:
+    """Initialize LangGraph checkpointer and compiled graph."""
+    settings = get_settings()
+    if not settings.database_url:
+        logger.warning("LangGraph disabled — no DATABASE_URL")
+        return
+
+    from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+
+    checkpointer = AsyncPostgresSaver.from_conn_string(settings.database_url_psycopg)
+    await checkpointer.setup()
+
+    graph = build_graph(bot)
+    compiled_graph = graph.compile(checkpointer=checkpointer)
+
+    dp["graph"] = compiled_graph
+    logger.info("LangGraph state machine initialized ✓")
+
+
 async def _init_zendesk_services(bot: Bot, dp: Dispatcher) -> None:
-    """Initialize Zendesk sync services and inject into dispatcher."""
+    """Initialize Zendesk services and inject into dispatcher."""
     settings = get_settings()
     if not settings.database_url:
         logger.warning("Zendesk sync disabled — no DATABASE_URL")
         return
 
-    from src.agent.thread_router import ThreadRouter
     from src.agent.ticket_summarizer import TicketSummarizer
     from src.embeddings.gemini_embedder import GeminiEmbedder
     from src.escalation.profile_service import ZendeskProfileService
-    from src.escalation.sync_service import ZendeskSyncService
     from src.escalation.ticket_client import ZendeskTicketClient
     from src.escalation.ticket_store import ConversationThreadStore
     from src.escalation.webhook_handler import ZendeskWebhookHandler
@@ -88,11 +94,10 @@ async def _init_zendesk_services(bot: Bot, dp: Dispatcher) -> None:
 
     zendesk_client = ZendeskTicketClient()
     thread_store = ConversationThreadStore(zendesk_client=zendesk_client)
-    thread_router = ThreadRouter()
     ticket_summarizer = TicketSummarizer()
     profile_service = ZendeskProfileService(zendesk_client=zendesk_client)
 
-    # Resolve the bot's Zendesk user ID (env → DB → create via Profiles API)
+    # Resolve the bot's Zendesk user ID
     bot_info = await bot.get_me()
     bot_zendesk_user_id = await profile_service.resolve_bot_zendesk_user_id(
         bot_telegram_id=bot_info.id,
@@ -100,16 +105,7 @@ async def _init_zendesk_services(bot: Bot, dp: Dispatcher) -> None:
     )
     logger.info("Bot Zendesk user ID resolved → {}", bot_zendesk_user_id)
 
-    # API admin account ID (for webhook actor_id filtering)
     api_account_user_id = settings.zendesk_admin_user_id or None
-
-    sync_service = ZendeskSyncService(
-        zendesk_client=zendesk_client,
-        thread_store=thread_store,
-        thread_router=thread_router,
-        profile_service=profile_service,
-        bot_zendesk_user_id=bot_zendesk_user_id,
-    )
 
     # Approved memory for storing resolved Q&A
     embedder = GeminiEmbedder()
@@ -125,15 +121,14 @@ async def _init_zendesk_services(bot: Bot, dp: Dispatcher) -> None:
         api_account_user_id=api_account_user_id,
     )
 
-    # Inject into dispatcher for handler access
-    dp["sync_service"] = sync_service
+    dp["zendesk_client"] = zendesk_client
 
     # Register webhook handler with FastAPI
     from src.api.app import set_webhook_handler
 
     set_webhook_handler(webhook_handler)
 
-    logger.info("Zendesk sync services initialized ✓")
+    logger.info("Zendesk services initialized ✓")
 
 
 async def run_bot() -> None:
@@ -146,7 +141,10 @@ async def run_bot() -> None:
 
     bot, dp = create_bot()
 
-    # --- Initialize Zendesk sync services ------------------------------------
+    # --- Initialize LangGraph state machine -----------------------------------
+    await _init_langgraph(bot, dp)
+
+    # --- Initialize Zendesk services ------------------------------------------
     await _init_zendesk_services(bot, dp)
 
     # --- Start the scheduled Zendesk article sync task -----------------------
@@ -167,7 +165,7 @@ async def run_bot() -> None:
 
 
 async def _run_api_server(port: int = 8000) -> None:
-    """Run the FastAPI server (health, metrics, Zendesk webhook) in the background."""
+    """Run the FastAPI server in the background."""
     import uvicorn
 
     from src.api.app import app as fastapi_app
@@ -179,11 +177,7 @@ async def _run_api_server(port: int = 8000) -> None:
 
 
 async def _run_zendesk_sync(interval_hours: int) -> None:
-    """Run Zendesk delta sync on a recurring schedule.
-
-    Sleeps for *interval_hours* before the first run so the bot is fully
-    initialised, then re-syncs on every subsequent interval.
-    """
+    """Run Zendesk delta sync on a recurring schedule."""
     from src.embeddings.gemini_embedder import GeminiEmbedder
     from src.ingestion.chunker import ArticleChunk
     from src.ingestion.sync_manager import SyncManager
@@ -214,7 +208,7 @@ async def _run_zendesk_sync(interval_hours: int) -> None:
 
 
 async def _run_polling(bot: Bot, dp: Dispatcher) -> None:
-    """Run the bot in long-polling mode (development default)."""
+    """Run the bot in long-polling mode."""
     logger.info("Starting long-polling …")
     try:
         await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())

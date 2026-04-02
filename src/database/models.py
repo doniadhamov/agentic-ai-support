@@ -1,10 +1,10 @@
-"""SQLAlchemy ORM models for conversation messages, threads, tickets, and identity."""
+"""SQLAlchemy ORM models — clean schema for LangGraph redesign."""
 
 from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import BigInteger, Boolean, DateTime, Integer, String, Text, func
+from sqlalchemy import BigInteger, Boolean, DateTime, Index, Integer, String, Text, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -18,28 +18,15 @@ class Base(DeclarativeBase):
 
 
 class TelegramUser(Base):
-    """One row per Telegram person. Central identity entity."""
+    """One row per Telegram person."""
 
     __tablename__ = "telegram_users"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    telegram_user_id: Mapped[int] = mapped_column(
-        BigInteger,
-        unique=True,
-        index=True,
-        nullable=False,
-    )
+    telegram_user_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     display_name: Mapped[str] = mapped_column(String(255), nullable=False, default="")
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        server_default=func.now(),
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        server_default=func.now(),
-        onupdate=func.now(),
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
 
@@ -48,77 +35,31 @@ class ZendeskUser(Base):
 
     __tablename__ = "zendesk_users"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    zendesk_user_id: Mapped[int] = mapped_column(
-        BigInteger,
-        unique=True,
-        nullable=False,
-    )
-    zendesk_profile_id: Mapped[str | None] = mapped_column(
-        String(100),
-        nullable=True,
-        default=None,
-    )
-    external_id: Mapped[str] = mapped_column(
-        String(100),
-        unique=True,
-        nullable=False,
-    )
-    telegram_user_id: Mapped[int | None] = mapped_column(
-        BigInteger,
-        index=True,
-        nullable=True,
-        default=None,
-    )
-    name: Mapped[str | None] = mapped_column(String(255), nullable=True, default=None)
-    role: Mapped[str | None] = mapped_column(String(20), nullable=True, default=None)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        server_default=func.now(),
-    )
+    zendesk_user_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    telegram_user_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    external_id: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    zendesk_profile_id: Mapped[str | None] = mapped_column(String(100))
+    name: Mapped[str | None] = mapped_column(String(255))
+    role: Mapped[str | None] = mapped_column(String(20))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        server_default=func.now(),
-        onupdate=func.now(),
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
 
 class TelegramGroup(Base):
-    """One row per Telegram group. DB is source of truth for group metadata."""
+    """One row per Telegram group (each group = one client company)."""
 
     __tablename__ = "telegram_groups"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    telegram_chat_id: Mapped[int] = mapped_column(
-        BigInteger,
-        unique=True,
-        index=True,
-        nullable=False,
-    )
-    title: Mapped[str | None] = mapped_column(String(255), nullable=True, default=None)
-    zendesk_organization_id: Mapped[int | None] = mapped_column(
-        BigInteger,
-        nullable=True,
-        default=None,
-    )
-    zendesk_group_id: Mapped[int | None] = mapped_column(
-        BigInteger,
-        nullable=True,
-        default=None,
-    )
+    telegram_chat_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    title: Mapped[str | None] = mapped_column(String(255))
+    zendesk_organization_id: Mapped[int | None] = mapped_column(BigInteger)
+    zendesk_group_id: Mapped[int | None] = mapped_column(BigInteger)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        server_default=func.now(),
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        server_default=func.now(),
-        onupdate=func.now(),
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
 
@@ -127,105 +68,117 @@ class TelegramGroup(Base):
 # ---------------------------------------------------------------------------
 
 
-class MessageRow(Base):
-    """Persisted conversation message for group context recovery after restart."""
+class Message(Base):
+    """Every message from any source: Telegram users, bot, Zendesk agents."""
 
-    __tablename__ = "telegram_messages"
+    __tablename__ = "messages"
+    __table_args__ = (
+        Index("uq_chat_message", "chat_id", "message_id", unique=True),
+        Index("idx_msg_chat_created", "chat_id", "created_at"),
+        Index("idx_msg_chat_source_created", "chat_id", "source", "created_at"),
+        Index("idx_msg_chat_msgid", "chat_id", "message_id"),
+        Index("idx_msg_ticket", "zendesk_ticket_id", "created_at"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    chat_id: Mapped[int] = mapped_column(BigInteger, index=True, nullable=False)
+    chat_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     message_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     username: Mapped[str] = mapped_column(String(255), nullable=False, default="")
-    text: Mapped[str] = mapped_column(Text, nullable=False)
-    source: Mapped[str] = mapped_column(
-        String(20),
-        nullable=False,
-        default="telegram",
-    )
-    reply_to_message_id: Mapped[int | None] = mapped_column(
-        BigInteger,
-        nullable=True,
-        default=None,
-    )
-    zendesk_ticket_id: Mapped[int | None] = mapped_column(
-        BigInteger,
-        nullable=True,
-        default=None,
-    )
-    zendesk_comment_id: Mapped[int | None] = mapped_column(
-        BigInteger,
-        nullable=True,
-        default=None,
-    )
-    link_type: Mapped[str | None] = mapped_column(
-        String(20),
-        nullable=True,
-        default=None,
-    )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        server_default=func.now(),
-    )
+    text: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    source: Mapped[str] = mapped_column(String(20), nullable=False, default="telegram")
+    # source values: "telegram" (user), "bot" (our bot), "zendesk" (human agent)
+    reply_to_message_id: Mapped[int | None] = mapped_column(BigInteger)
+    file_id: Mapped[str | None] = mapped_column(String(255))
+    file_type: Mapped[str | None] = mapped_column(String(20))
+    # "photo", "voice", "document", or None for text-only
+    file_description: Mapped[str | None] = mapped_column(Text)
+    zendesk_ticket_id: Mapped[int | None] = mapped_column(BigInteger)
+    zendesk_comment_id: Mapped[int | None] = mapped_column(BigInteger)
+    link_type: Mapped[str | None] = mapped_column(String(20))
+    # link_type values: "root" (first msg that created ticket), "reply" (subsequent), "mirror" (from Zendesk)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+# ---------------------------------------------------------------------------
+# Conversation thread model
+# ---------------------------------------------------------------------------
 
 
 class ConversationThread(Base):
-    """Maps a Telegram conversation thread to a Zendesk ticket."""
+    """Maps a Telegram user's conversation in a group to a Zendesk ticket."""
 
     __tablename__ = "conversation_threads"
+    __table_args__ = (
+        Index("idx_thread_group_user_status", "group_id", "user_id", "status"),
+        Index("idx_thread_group_status", "group_id", "status"),
+        Index("idx_thread_ticket", "zendesk_ticket_id", unique=True),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    group_id: Mapped[int] = mapped_column(BigInteger, index=True, nullable=False)
-    user_id: Mapped[int] = mapped_column(BigInteger, index=True, nullable=False)
-    zendesk_ticket_id: Mapped[int] = mapped_column(
-        BigInteger,
-        unique=True,
-        nullable=False,
-    )
+    group_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    zendesk_ticket_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     subject: Mapped[str] = mapped_column(String(255), nullable=False, default="")
-    status: Mapped[str] = mapped_column(
-        String(20),
-        nullable=False,
-        default="active",
-    )
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="open")
+    # status values: "open", "pending", "solved", "closed"
+    urgency: Mapped[str] = mapped_column(String(20), nullable=False, default="normal")
+    # urgency values: "normal", "high", "critical"
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        default=lambda: datetime.now(tz=UTC),
+        DateTime(timezone=True), default=lambda: datetime.now(tz=UTC)
     )
-    closed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True,
-        default=None,
-    )
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_message_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        default=lambda: datetime.now(tz=UTC),
+        DateTime(timezone=True), default=lambda: datetime.now(tz=UTC)
     )
 
 
-class TicketRow(Base):
-    """Persisted escalation ticket (Zendesk ticket IDs are integers)."""
+# ---------------------------------------------------------------------------
+# Bot decision log (for dashboard analytics and decision review)
+# ---------------------------------------------------------------------------
 
-    __tablename__ = "tickets"
 
-    ticket_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+class BotDecision(Base):
+    """Log of every bot decision — for performance analytics and decision review."""
+
+    __tablename__ = "bot_decisions"
+    __table_args__ = (
+        Index("idx_decision_created", "created_at"),
+        Index("idx_decision_group_created", "group_id", "created_at"),
+        Index("idx_decision_action", "action", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     group_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     message_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    message_text: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    file_description: Mapped[str | None] = mapped_column(Text)
+
+    # Think node output
+    action: Mapped[str] = mapped_column(String(20), nullable=False)
+    urgency: Mapped[str] = mapped_column(String(20), nullable=False, default="normal")
+    ticket_action: Mapped[str] = mapped_column(String(20), nullable=False)
+    target_ticket_id: Mapped[int | None] = mapped_column(BigInteger)
+    extracted_question: Mapped[str | None] = mapped_column(Text)
     language: Mapped[str] = mapped_column(String(10), nullable=False, default="en")
-    question: Mapped[str] = mapped_column(Text, nullable=False)
-    status: Mapped[str] = mapped_column(String(20), nullable=False, default="open")
-    answer: Mapped[str] = mapped_column(Text, nullable=False, default="")
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        default=lambda: datetime.now(tz=UTC),
-    )
-    closed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True,
-        default=None,
-    )
+    reasoning: Mapped[str] = mapped_column(Text, nullable=False, default="")
+
+    # Generate node output (if action="answer")
+    answer_text: Mapped[str | None] = mapped_column(Text)
+    retrieval_confidence: Mapped[float | None] = mapped_column(nullable=True)
+    needs_escalation: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    # Timing (milliseconds)
+    perceive_ms: Mapped[int | None] = mapped_column(Integer)
+    think_ms: Mapped[int | None] = mapped_column(Integer)
+    retrieve_ms: Mapped[int | None] = mapped_column(Integer)
+    generate_ms: Mapped[int | None] = mapped_column(Integer)
+    total_ms: Mapped[int | None] = mapped_column(Integer)
+
+    # Correction (set by admin in Decision Review page)
+    is_correct: Mapped[bool | None] = mapped_column(Boolean)
+    correct_action: Mapped[str | None] = mapped_column(String(20))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

@@ -110,21 +110,16 @@ async def basic_metrics() -> dict:
             from sqlalchemy import func, select
 
             from src.database.engine import get_session_factory
-            from src.database.models import ConversationThread, TicketRow
+            from src.database.models import ConversationThread
 
             factory = get_session_factory()
             async with factory() as session:
                 result = await session.execute(
-                    select(func.count()).select_from(TicketRow).where(TicketRow.status == "open")
-                )
-                metrics["open_tickets"] = result.scalar() or 0
-
-                result = await session.execute(
                     select(func.count())
                     .select_from(ConversationThread)
-                    .where(ConversationThread.status == "active")
+                    .where(ConversationThread.status.in_(["open", "pending"]))
                 )
-                metrics["active_conversation_threads"] = result.scalar() or 0
+                metrics["active_threads"] = result.scalar() or 0
         except Exception:
             metrics["open_tickets"] = None
             metrics["active_conversation_threads"] = None

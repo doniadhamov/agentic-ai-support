@@ -75,15 +75,22 @@ class Settings(BaseSettings):
 
     # --- Agent Behaviour ---
     support_min_confidence_score: float = Field(default=0.70, ge=0.0, le=1.0)
-    group_context_window: int = Field(default=20, ge=1, le=100)
-    rag_top_k: int = Field(default=5, ge=1, le=20)
-    rag_override_min_score: float = Field(
-        default=0.75,
-        ge=0.0,
-        le=1.0,
-        description="Min RAG score to override NON_SUPPORT → SUPPORT_QUESTION",
+    conversation_history_limit: int = Field(
+        default=30,
+        ge=1,
+        le=100,
+        description="Number of recent messages loaded by perceive node per group",
     )
+    rag_top_k: int = Field(default=5, ge=1, le=20)
     zendesk_sync_interval_hours: int = Field(default=6, ge=0)
+
+    @property
+    def database_url_psycopg(self) -> str:
+        """Convert asyncpg DATABASE_URL to psycopg format for LangGraph checkpointer."""
+        url = self.database_url
+        if url.startswith("postgresql+asyncpg://"):
+            return url.replace("postgresql+asyncpg://", "postgresql://", 1)
+        return url
 
     # --- Admin Dashboard ---
     admin_password: str = Field(default="", description="Dashboard password; empty = no auth")

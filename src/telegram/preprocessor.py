@@ -238,6 +238,18 @@ async def _download_photo(message: Message, bot: Bot, log_ctx: dict) -> bytes | 
         return None
 
 
+_gemini_client: genai.Client | None = None
+
+
+def _get_gemini_client() -> genai.Client:
+    """Return a cached Gemini client (created once)."""
+    global _gemini_client
+    if _gemini_client is None:
+        settings = get_settings()
+        _gemini_client = genai.Client(api_key=settings.google_api_key)
+    return _gemini_client
+
+
 @async_retry(max_attempts=3, min_wait=1.0, max_wait=10.0)
 async def _transcribe_audio(audio_bytes: bytes, mime_type: str, log_ctx: dict) -> str:
     """Transcribe audio bytes using Gemini Flash.
@@ -251,7 +263,7 @@ async def _transcribe_audio(audio_bytes: bytes, mime_type: str, log_ctx: dict) -
         Transcription text, or empty string on failure.
     """
     settings = get_settings()
-    client = genai.Client(api_key=settings.google_api_key)
+    client = _get_gemini_client()
 
     audio_part = types.Part.from_bytes(data=audio_bytes, mime_type=mime_type)
 

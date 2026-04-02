@@ -13,7 +13,6 @@ from src.database.repositories import (
     get_root_message_id,
     save_message,
     update_thread_status,
-    update_ticket_status,
 )
 from src.escalation.ticket_store import ConversationThreadStore
 from src.memory.approved_memory import ApprovedMemory
@@ -204,9 +203,8 @@ class ZendeskWebhookHandler:
         new_status = str(detail.get("status", "")).lower()
         ticket_id_int = int(ticket_id)
 
-        # Sync status to both DB tables on every transition
+        # Sync status to conversation thread
         await update_thread_status(ticket_id_int, new_status)
-        await update_ticket_status(ticket_id_int, new_status)
         logger.info("Webhook: ticket={} status changed → {}", ticket_id, new_status)
 
         # Extra logic only for solved/closed

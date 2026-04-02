@@ -60,9 +60,7 @@ class ApprovedMemory:
             "language": approved.language,
             "ticket_id": approved.ticket_id,
             "group_id": approved.group_id,
-            # Keep the same payload keys the retriever expects
-            "article_title": "Approved Answer",
-            "article_url": "",
+            "source_type": "learned",
         }
 
         point = PointStruct(id=point_id, vector=vector, payload=payload)

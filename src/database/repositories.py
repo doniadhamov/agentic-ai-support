@@ -1,22 +1,22 @@
-"""Async repository helpers for messages, threads, tickets, and identity."""
+"""Async repository helpers for the LangGraph redesign."""
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from loguru import logger
 from sqlalchemy import delete, desc, select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from src.database.engine import get_session_factory
 from src.database.models import (
+    BotDecision,
     ConversationThread,
-    MessageRow,
+    Message,
     TelegramGroup,
     TelegramUser,
-    TicketRow,
     ZendeskUser,
 )
-from src.escalation.ticket_schemas import TicketRecord, TicketStatus
 
 # ---------------------------------------------------------------------------
 # Telegram user repository
@@ -226,51 +226,22 @@ async def remove_telegram_group(telegram_chat_id: int) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Message repository
+# Message repository — for perceive node
 # ---------------------------------------------------------------------------
 
 
-async def save_message(
-    chat_id: int,
-    message_id: int,
-    user_id: int,
-    username: str,
-    text: str,
-    source: str = "telegram",
-    reply_to_message_id: int | None = None,
-    zendesk_ticket_id: int | None = None,
-    zendesk_comment_id: int | None = None,
-    link_type: str | None = None,
-) -> None:
-    """Insert a message row."""
-    factory = get_session_factory()
-    async with factory() as session:
-        session.add(
-            MessageRow(
-                chat_id=chat_id,
-                message_id=message_id,
-                user_id=user_id,
-                username=username,
-                text=text,
-                source=source,
-                reply_to_message_id=reply_to_message_id,
-                zendesk_ticket_id=zendesk_ticket_id,
-                zendesk_comment_id=zendesk_comment_id,
-                link_type=link_type,
-                created_at=datetime.now(tz=UTC),
-            )
-        )
-        await session.commit()
+async def get_recent_messages(chat_id: int, limit: int = 30) -> list[dict]:
+    """Recent messages in this group, oldest first.
 
-
-async def get_recent_messages(chat_id: int, limit: int = 20) -> list[dict]:
-    """Return the most recent messages for *chat_id* ordered oldest-first."""
+    Returns dicts with: message_id, user_id, username, text, source,
+    file_id, file_type, file_description, created_at.
+    """
     factory = get_session_factory()
     async with factory() as session:
         stmt = (
-            select(MessageRow)
-            .where(MessageRow.chat_id == chat_id)
-            .order_by(desc(MessageRow.created_at))
+            select(Message)
+            .where(Message.chat_id == chat_id)
+            .order_by(desc(Message.created_at))
             .limit(limit)
         )
         result = await session.execute(stmt)
@@ -283,64 +254,103 @@ async def get_recent_messages(chat_id: int, limit: int = 20) -> list[dict]:
             "username": r.username,
             "text": r.text,
             "source": r.source,
-            "timestamp": r.created_at,
+            "file_id": r.file_id,
+            "file_type": r.file_type,
+            "file_description": r.file_description,
+            "created_at": r.created_at,
         }
         for r in rows
     ]
 
 
-async def get_root_message_id(zendesk_ticket_id: int, chat_id: int) -> int | None:
-    """Return the Telegram message_id of the root message for a ticket, or None."""
+async def get_bot_last_response(chat_id: int) -> dict | None:
+    """Most recent bot message in this group."""
     factory = get_session_factory()
     async with factory() as session:
         stmt = (
-            select(MessageRow.message_id)
-            .where(
-                MessageRow.zendesk_ticket_id == zendesk_ticket_id,
-                MessageRow.chat_id == chat_id,
-                MessageRow.link_type == "root",
-            )
-            .order_by(MessageRow.created_at)
+            select(Message)
+            .where(Message.chat_id == chat_id, Message.source == "bot")
+            .order_by(desc(Message.created_at))
             .limit(1)
         )
         result = await session.execute(stmt)
-        return result.scalar_one_or_none()
+        row = result.scalars().first()
+    if row is None:
+        return None
+    return {
+        "text": row.text,
+        "created_at": row.created_at,
+        "reply_to_message_id": row.reply_to_message_id,
+    }
 
 
-async def get_messages_by_ticket_id(zendesk_ticket_id: int) -> list[dict]:
-    """Return all messages linked to a Zendesk ticket, ordered oldest-first."""
+async def get_message_by_telegram_id(chat_id: int, message_id: int) -> Message | None:
+    """Look up a message by its Telegram chat_id + message_id."""
     factory = get_session_factory()
     async with factory() as session:
-        stmt = (
-            select(MessageRow)
-            .where(MessageRow.zendesk_ticket_id == zendesk_ticket_id)
-            .order_by(MessageRow.created_at)
-        )
-        result = await session.execute(stmt)
-        rows = list(result.scalars().all())
-    return [
-        {
-            "message_id": r.message_id,
-            "user_id": r.user_id,
-            "username": r.username,
-            "text": r.text,
-            "source": r.source,
-            "timestamp": r.created_at,
-        }
-        for r in rows
-    ]
-
-
-async def get_message_by_telegram_id(chat_id: int, message_id: int) -> MessageRow | None:
-    """Look up a message by its Telegram chat_id + message_id (for reply-based ticket lookup)."""
-    factory = get_session_factory()
-    async with factory() as session:
-        stmt = select(MessageRow).where(
-            MessageRow.chat_id == chat_id,
-            MessageRow.message_id == message_id,
+        stmt = select(Message).where(
+            Message.chat_id == chat_id,
+            Message.message_id == message_id,
         )
         result = await session.execute(stmt)
         return result.scalars().first()
+
+
+# ---------------------------------------------------------------------------
+# Message repository — for remember node
+# ---------------------------------------------------------------------------
+
+
+async def save_message(
+    chat_id: int,
+    message_id: int,
+    user_id: int,
+    username: str,
+    text: str,
+    source: str = "telegram",
+    reply_to_message_id: int | None = None,
+    file_id: str | None = None,
+    file_type: str | None = None,
+    zendesk_ticket_id: int | None = None,
+    zendesk_comment_id: int | None = None,
+    link_type: str | None = None,
+) -> None:
+    """Insert a message row. ON CONFLICT (chat_id, message_id) DO NOTHING."""
+    factory = get_session_factory()
+    async with factory() as session:
+        stmt = pg_insert(Message).values(
+            chat_id=chat_id,
+            message_id=message_id,
+            user_id=user_id,
+            username=username,
+            text=text,
+            source=source,
+            reply_to_message_id=reply_to_message_id,
+            file_id=file_id,
+            file_type=file_type,
+            zendesk_ticket_id=zendesk_ticket_id,
+            zendesk_comment_id=zendesk_comment_id,
+            link_type=link_type,
+            created_at=datetime.now(tz=UTC),
+        )
+        stmt = stmt.on_conflict_do_nothing(index_elements=["chat_id", "message_id"])
+        await session.execute(stmt)
+        await session.commit()
+
+
+async def update_message_file_description(
+    chat_id: int, message_id: int, file_description: str
+) -> None:
+    """Set file_description on a message row."""
+    factory = get_session_factory()
+    async with factory() as session:
+        stmt = (
+            update(Message)
+            .where(Message.chat_id == chat_id, Message.message_id == message_id)
+            .values(file_description=file_description)
+        )
+        await session.execute(stmt)
+        await session.commit()
 
 
 async def update_message_zendesk_ids(
@@ -360,45 +370,130 @@ async def update_message_zendesk_ids(
         if link_type is not None:
             values["link_type"] = link_type
         stmt = (
-            update(MessageRow)
-            .where(
-                MessageRow.chat_id == chat_id,
-                MessageRow.message_id == message_id,
-            )
+            update(Message)
+            .where(Message.chat_id == chat_id, Message.message_id == message_id)
             .values(**values)
         )
         await session.execute(stmt)
         await session.commit()
 
 
-async def prune_old_messages(chat_id: int, keep: int = 50) -> int:
-    """Delete messages beyond the *keep* most recent for a group. Returns count deleted."""
+# ---------------------------------------------------------------------------
+# Message repository — for webhook handler & admin
+# ---------------------------------------------------------------------------
+
+
+async def get_root_message_id(zendesk_ticket_id: int, chat_id: int) -> int | None:
+    """Return the Telegram message_id of the root message for a ticket, or None."""
     factory = get_session_factory()
     async with factory() as session:
-        # Find the cutoff ID
-        subq = (
-            select(MessageRow.id)
-            .where(MessageRow.chat_id == chat_id)
-            .order_by(desc(MessageRow.created_at))
-            .limit(keep)
-        )
-        cutoff_result = await session.execute(subq)
-        keep_ids = {row[0] for row in cutoff_result.all()}
-
-        if not keep_ids:
-            return 0
-
-        stmt = delete(MessageRow).where(
-            MessageRow.chat_id == chat_id,
-            MessageRow.id.notin_(keep_ids),
+        stmt = (
+            select(Message.message_id)
+            .where(
+                Message.zendesk_ticket_id == zendesk_ticket_id,
+                Message.chat_id == chat_id,
+                Message.link_type == "root",
+            )
+            .order_by(Message.created_at)
+            .limit(1)
         )
         result = await session.execute(stmt)
-        await session.commit()
-        return result.rowcount or 0
+        return result.scalar_one_or_none()
+
+
+async def get_messages_by_ticket_id(zendesk_ticket_id: int) -> list[dict]:
+    """Return all messages linked to a Zendesk ticket, ordered oldest-first."""
+    factory = get_session_factory()
+    async with factory() as session:
+        stmt = (
+            select(Message)
+            .where(Message.zendesk_ticket_id == zendesk_ticket_id)
+            .order_by(Message.created_at)
+        )
+        result = await session.execute(stmt)
+        rows = list(result.scalars().all())
+    return [
+        {
+            "message_id": r.message_id,
+            "user_id": r.user_id,
+            "username": r.username,
+            "text": r.text,
+            "source": r.source,
+            "created_at": r.created_at,
+        }
+        for r in rows
+    ]
 
 
 # ---------------------------------------------------------------------------
-# Conversation thread repository
+# Conversation thread repository — for perceive node
+# ---------------------------------------------------------------------------
+
+
+async def get_active_threads_in_group(group_id: int) -> list[ConversationThread]:
+    """All open/pending threads in this group."""
+    factory = get_session_factory()
+    async with factory() as session:
+        stmt = (
+            select(ConversationThread)
+            .where(
+                ConversationThread.group_id == group_id,
+                ConversationThread.status.in_(["open", "pending"]),
+            )
+            .order_by(desc(ConversationThread.last_message_at))
+        )
+        result = await session.execute(stmt)
+        return list(result.scalars().all())
+
+
+async def get_active_thread(group_id: int, user_id: int) -> ConversationThread | None:
+    """This user's open/pending thread in this group (if any)."""
+    factory = get_session_factory()
+    async with factory() as session:
+        stmt = (
+            select(ConversationThread)
+            .where(
+                ConversationThread.group_id == group_id,
+                ConversationThread.user_id == user_id,
+                ConversationThread.status.in_(["open", "pending"]),
+            )
+            .order_by(desc(ConversationThread.last_message_at))
+            .limit(1)
+        )
+        result = await session.execute(stmt)
+        return result.scalars().first()
+
+
+async def get_recently_solved_threads(group_id: int, days: int = 7) -> list[dict]:
+    """Recently solved/closed threads in this group (for follow-up detection)."""
+    factory = get_session_factory()
+    cutoff = datetime.now(tz=UTC) - timedelta(days=days)
+    async with factory() as session:
+        stmt = (
+            select(ConversationThread)
+            .where(
+                ConversationThread.group_id == group_id,
+                ConversationThread.status.in_(["solved", "closed"]),
+                ConversationThread.closed_at >= cutoff,
+            )
+            .order_by(desc(ConversationThread.closed_at))
+        )
+        result = await session.execute(stmt)
+        rows = list(result.scalars().all())
+    return [
+        {
+            "ticket_id": r.zendesk_ticket_id,
+            "subject": r.subject,
+            "user_id": r.user_id,
+            "status": r.status,
+            "closed_at": r.closed_at,
+        }
+        for r in rows
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Conversation thread repository — for remember node
 # ---------------------------------------------------------------------------
 
 
@@ -407,8 +502,9 @@ async def create_thread(
     user_id: int,
     zendesk_ticket_id: int,
     subject: str = "",
+    urgency: str = "normal",
 ) -> ConversationThread:
-    """Create a new conversation thread mapping."""
+    """Create a new conversation thread."""
     factory = get_session_factory()
     async with factory() as session:
         now = datetime.now(tz=UTC)
@@ -417,7 +513,8 @@ async def create_thread(
             user_id=user_id,
             zendesk_ticket_id=zendesk_ticket_id,
             subject=subject,
-            status="active",
+            status="open",
+            urgency=urgency,
             created_at=now,
             last_message_at=now,
         )
@@ -433,38 +530,22 @@ async def create_thread(
         return thread
 
 
-async def get_active_thread(group_id: int, user_id: int) -> ConversationThread | None:
-    """Return the active thread for a specific user in a group (if any)."""
+async def touch_thread(thread_id: int) -> None:
+    """Update last_message_at on a thread to now."""
     factory = get_session_factory()
     async with factory() as session:
         stmt = (
-            select(ConversationThread)
-            .where(
-                ConversationThread.group_id == group_id,
-                ConversationThread.user_id == user_id,
-                ConversationThread.status == "active",
-            )
-            .order_by(desc(ConversationThread.last_message_at))
-            .limit(1)
+            update(ConversationThread)
+            .where(ConversationThread.id == thread_id)
+            .values(last_message_at=datetime.now(tz=UTC))
         )
-        result = await session.execute(stmt)
-        return result.scalars().first()
+        await session.execute(stmt)
+        await session.commit()
 
 
-async def get_active_threads_in_group(group_id: int) -> list[ConversationThread]:
-    """Return all active threads in a group (across all users)."""
-    factory = get_session_factory()
-    async with factory() as session:
-        stmt = (
-            select(ConversationThread)
-            .where(
-                ConversationThread.group_id == group_id,
-                ConversationThread.status == "active",
-            )
-            .order_by(desc(ConversationThread.last_message_at))
-        )
-        result = await session.execute(stmt)
-        return list(result.scalars().all())
+# ---------------------------------------------------------------------------
+# Conversation thread repository — for webhook handler
+# ---------------------------------------------------------------------------
 
 
 async def get_thread_by_zendesk_ticket_id(zendesk_ticket_id: int) -> ConversationThread | None:
@@ -497,127 +578,71 @@ async def update_thread_status(zendesk_ticket_id: int, status: str) -> None:
     """Update a conversation thread's status by Zendesk ticket ID."""
     factory = get_session_factory()
     async with factory() as session:
+        values: dict = {"status": status}
+        if status in ("solved", "closed"):
+            values["closed_at"] = datetime.now(tz=UTC)
         stmt = (
             update(ConversationThread)
             .where(ConversationThread.zendesk_ticket_id == zendesk_ticket_id)
-            .values(status=status)
+            .values(**values)
         )
         await session.execute(stmt)
         await session.commit()
-    logger.info("DB: updated thread status for ticket={} → {}", zendesk_ticket_id, status)
-
-
-async def touch_thread(thread_id: int) -> None:
-    """Update last_message_at on a thread to now."""
-    factory = get_session_factory()
-    async with factory() as session:
-        stmt = (
-            update(ConversationThread)
-            .where(ConversationThread.id == thread_id)
-            .values(last_message_at=datetime.now(tz=UTC))
-        )
-        await session.execute(stmt)
-        await session.commit()
+    logger.info("DB: updated thread status for ticket={} -> {}", zendesk_ticket_id, status)
 
 
 # ---------------------------------------------------------------------------
-# Ticket repository
+# Bot decision repository — for remember node & dashboard
 # ---------------------------------------------------------------------------
 
 
-async def save_ticket(record: TicketRecord) -> None:
-    """Insert or update a ticket row from a TicketRecord."""
+async def save_bot_decision(
+    group_id: int,
+    user_id: int,
+    message_id: int,
+    message_text: str,
+    action: str,
+    ticket_action: str,
+    language: str = "en",
+    urgency: str = "normal",
+    reasoning: str = "",
+    file_description: str | None = None,
+    target_ticket_id: int | None = None,
+    extracted_question: str | None = None,
+    answer_text: str | None = None,
+    retrieval_confidence: float | None = None,
+    needs_escalation: bool = False,
+    perceive_ms: int | None = None,
+    think_ms: int | None = None,
+    retrieve_ms: int | None = None,
+    generate_ms: int | None = None,
+    total_ms: int | None = None,
+) -> None:
+    """Log a bot decision for analytics and review."""
     factory = get_session_factory()
     async with factory() as session:
-        row = await session.get(TicketRow, record.ticket_id)
-        if row is None:
-            session.add(
-                TicketRow(
-                    ticket_id=record.ticket_id,
-                    group_id=record.group_id,
-                    user_id=record.user_id,
-                    message_id=record.message_id,
-                    language=record.language,
-                    question=record.question,
-                    status=record.status.value,
-                    answer=record.answer,
-                    created_at=record.created_at,
-                )
-            )
-        else:
-            row.status = record.status.value
-            row.answer = record.answer
-        await session.commit()
-    logger.debug("DB: saved ticket_id={}", record.ticket_id)
-
-
-async def get_open_tickets() -> list[TicketRecord]:
-    """Return all open tickets as TicketRecord objects."""
-    factory = get_session_factory()
-    async with factory() as session:
-        stmt = select(TicketRow).where(TicketRow.status == TicketStatus.OPEN.value)
-        result = await session.execute(stmt)
-        return [_row_to_record(r) for r in result.scalars().all()]
-
-
-async def close_ticket(ticket_id: int, answer: str = "") -> None:
-    """Mark a ticket as closed in the DB."""
-    factory = get_session_factory()
-    now = datetime.now(tz=UTC)
-    async with factory() as session:
-        stmt = (
-            update(TicketRow)
-            .where(TicketRow.ticket_id == ticket_id)
-            .values(
-                status=TicketStatus.CLOSED.value,
-                answer=answer or TicketRow.answer,
-                closed_at=now,
+        session.add(
+            BotDecision(
+                group_id=group_id,
+                user_id=user_id,
+                message_id=message_id,
+                message_text=message_text,
+                file_description=file_description,
+                action=action,
+                urgency=urgency,
+                ticket_action=ticket_action,
+                target_ticket_id=target_ticket_id,
+                extracted_question=extracted_question,
+                language=language,
+                reasoning=reasoning,
+                answer_text=answer_text,
+                retrieval_confidence=retrieval_confidence,
+                needs_escalation=needs_escalation,
+                perceive_ms=perceive_ms,
+                think_ms=think_ms,
+                retrieve_ms=retrieve_ms,
+                generate_ms=generate_ms,
+                total_ms=total_ms,
             )
         )
-        await session.execute(stmt)
         await session.commit()
-    logger.info("DB: closed ticket_id={}", ticket_id)
-
-
-async def update_ticket_status(ticket_id: int, status: str) -> None:
-    """Update a ticket's status by Zendesk ticket ID."""
-    factory = get_session_factory()
-    values: dict = {"status": status}
-    if status in ("solved", "closed"):
-        values["closed_at"] = datetime.now(tz=UTC)
-    async with factory() as session:
-        stmt = update(TicketRow).where(TicketRow.ticket_id == ticket_id).values(**values)
-        await session.execute(stmt)
-        await session.commit()
-    logger.info("DB: updated ticket status ticket_id={} → {}", ticket_id, status)
-
-
-async def get_ticket(ticket_id: int) -> TicketRecord | None:
-    """Fetch a single ticket by ID."""
-    factory = get_session_factory()
-    async with factory() as session:
-        row = await session.get(TicketRow, ticket_id)
-        return _row_to_record(row) if row else None
-
-
-async def get_all_tickets() -> list[TicketRecord]:
-    """Return all tickets (for admin dashboard)."""
-    factory = get_session_factory()
-    async with factory() as session:
-        stmt = select(TicketRow).order_by(desc(TicketRow.created_at))
-        result = await session.execute(stmt)
-        return [_row_to_record(r) for r in result.scalars().all()]
-
-
-def _row_to_record(row: TicketRow) -> TicketRecord:
-    return TicketRecord(
-        ticket_id=row.ticket_id,
-        group_id=row.group_id,
-        user_id=row.user_id,
-        message_id=row.message_id,
-        language=row.language,
-        question=row.question,
-        status=TicketStatus(row.status),
-        answer=row.answer,
-        created_at=row.created_at,
-    )

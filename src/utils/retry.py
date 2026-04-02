@@ -33,8 +33,11 @@ def async_retry(
                         return await func(*args, **kwargs)
                     except exceptions as e:
                         logger.warning(
-                            f"Retrying {func.__name__} "
-                            f"(attempt {attempt.retry_state.attempt_number}/{max_attempts}): {e}"
+                            "Retrying {} (attempt {}/{}): {}",
+                            func.__name__,
+                            attempt.retry_state.attempt_number,
+                            max_attempts,
+                            e,
                         )
                         raise
 

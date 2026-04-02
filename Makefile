@@ -20,7 +20,7 @@ help:
 	@echo ""
 	@echo "Local development:"
 	@echo "  qdrant-only    Start only Qdrant (for local dev)"
-	@echo "  infra          Start Qdrant + PostgreSQL + Redis (for local dev)"
+	@echo "  infra          Start Qdrant + PostgreSQL (for local dev)"
 	@echo ""
 	@echo "Code quality:"
 	@echo "  lint           Run ruff check + format"

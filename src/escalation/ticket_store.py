@@ -153,7 +153,7 @@ class ConversationThreadStore:
         factory = get_session_factory()
         async with factory() as session:
             stmt = select(ConversationThread).where(
-                ConversationThread.status == "active",
+                ConversationThread.status.in_(["open", "pending"]),
             )
             result = await session.execute(stmt)
             return list(result.scalars().all())

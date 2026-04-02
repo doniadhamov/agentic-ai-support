@@ -2,21 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
-from enum import StrEnum
-
 from pydantic import BaseModel, Field
-
-
-class TicketStatus(StrEnum):
-    """Zendesk ticket statuses."""
-
-    NEW = "new"
-    OPEN = "open"
-    PENDING = "pending"
-    HOLD = "hold"
-    SOLVED = "solved"
-    CLOSED = "closed"
 
 
 class ZendeskTicketClosedError(Exception):
@@ -63,25 +49,3 @@ class ZendeskComment(BaseModel):
         default_factory=list,
         description="Upload tokens from the Zendesk Attachments API",
     )
-
-
-class TicketRecord(BaseModel):
-    """In-memory representation of a ticket tracked by the store."""
-
-    ticket_id: int = Field(..., description="Zendesk ticket ID (integer)")
-    group_id: int
-    user_id: int
-    message_id: int = Field(..., description="Original Telegram message ID to reply to")
-    language: str = Field(default="en")
-    question: str
-    status: TicketStatus = Field(default=TicketStatus.OPEN)
-    answer: str = Field(default="", description="Human answer; populated when status=answered")
-    created_at: datetime = Field(default_factory=lambda: datetime.now(tz=UTC))
-
-
-class TicketResponse(BaseModel):
-    """Response returned by the Zendesk API for a status check."""
-
-    ticket_id: int
-    status: TicketStatus
-    answer: str = Field(default="")
