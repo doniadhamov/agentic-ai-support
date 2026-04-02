@@ -184,30 +184,42 @@ async def think_node(state: SupportState) -> dict:
 
     context = _build_context_text(state)
 
+    images = state.get("images", [])
+    raw_text = state["raw_text"]
+
+    # Build message section — explicitly note attached images so the model
+    # doesn't treat photo-only messages as "empty".
+    text_line = f"Text: {raw_text}" if raw_text.strip() else "Text: (no text — see attached image(s))"
+    attachment_line = ""
+    if images:
+        attachment_line = f"\nAttachments: {len(images)} image(s) attached below — YOU MUST describe them in file_description"
+
     message_section = (
         f"CURRENT MESSAGE:\n"
         f"From: {state['sender_name']} (user_id={state['sender_id']})\n"
         f"Group: {state['group_name']} (group_id={state['group_id']})\n"
-        f"Text: {state['raw_text']}"
+        f"{text_line}{attachment_line}"
     )
 
     full_prompt = f"{prompt}\n\n{context}\n\n{message_section}"
 
-    # Include images if present
-    images = state.get("images", [])
+    # Include images if present — place text BEFORE images so the model
+    # reads the instructions first, then sees the images.
     if images:
         user_content: str | list[dict] = [
-            {
-                "type": "image",
-                "source": {
-                    "type": "base64",
-                    "media_type": "image/jpeg",
-                    "data": base64.standard_b64encode(img).decode(),
-                },
-            }
-            for img in images[:5]
+            {"type": "text", "text": full_prompt},
         ]
-        user_content.append({"type": "text", "text": full_prompt})
+        for img in images[:5]:
+            user_content.append(
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "image/jpeg",
+                        "data": base64.standard_b64encode(img).decode(),
+                    },
+                }
+            )
     else:
         user_content = full_prompt
 
