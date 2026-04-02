@@ -15,13 +15,23 @@ from src.agent.nodes.respond import respond_node
 from src.agent.nodes.retrieve import retrieve_node
 from src.agent.nodes.think import think_node
 from src.agent.state import SupportState
+from src.escalation.profile_service import ZendeskProfileService
+from src.escalation.ticket_client import ZendeskTicketClient
+from src.escalation.ticket_store import ConversationThreadStore
 
 
-def build_graph(bot: Bot) -> StateGraph:
+def build_graph(
+    bot: Bot,
+    zendesk_client: ZendeskTicketClient | None = None,
+    profile_service: ZendeskProfileService | None = None,
+    thread_store: ConversationThreadStore | None = None,
+    bot_zendesk_user_id: int = 0,
+) -> StateGraph:
     """Build and return the (uncompiled) support agent StateGraph.
 
     The `bot` instance is bound to the respond node via functools.partial
-    so it can send Telegram messages.
+    so it can send Telegram messages. Zendesk services are bound to the
+    remember node for bidirectional sync.
     """
     graph = StateGraph(SupportState)
 
@@ -31,7 +41,17 @@ def build_graph(bot: Bot) -> StateGraph:
     graph.add_node("retrieve", retrieve_node)
     graph.add_node("generate", generate_node)
     graph.add_node("respond", partial(respond_node, bot=bot))
-    graph.add_node("remember", remember_node)
+    graph.add_node(
+        "remember",
+        partial(
+            remember_node,
+            bot=bot,
+            zendesk_client=zendesk_client,
+            profile_service=profile_service,
+            thread_store=thread_store,
+            bot_zendesk_user_id=bot_zendesk_user_id,
+        ),
+    )
 
     # Entry point
     graph.set_entry_point("perceive")

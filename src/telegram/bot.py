@@ -58,7 +58,11 @@ async def _init_database() -> None:
 
 
 async def _init_langgraph(bot: Bot, dp: Dispatcher) -> None:
-    """Initialize LangGraph checkpointer and compiled graph."""
+    """Initialize LangGraph checkpointer and compiled graph.
+
+    Must be called AFTER _init_zendesk_services so that Zendesk deps are
+    available in dp for injection into the remember node.
+    """
     settings = get_settings()
     if not settings.database_url:
         logger.warning("LangGraph disabled — no DATABASE_URL")
@@ -72,7 +76,13 @@ async def _init_langgraph(bot: Bot, dp: Dispatcher) -> None:
     checkpointer = await checkpointer_cm.__aenter__()
     await checkpointer.setup()
 
-    graph = build_graph(bot)
+    graph = build_graph(
+        bot,
+        zendesk_client=dp.get("zendesk_client"),
+        profile_service=dp.get("profile_service"),
+        thread_store=dp.get("thread_store"),
+        bot_zendesk_user_id=dp.get("bot_zendesk_user_id", 0),
+    )
     compiled_graph = graph.compile(checkpointer=checkpointer)
 
     dp["graph"] = compiled_graph
@@ -126,6 +136,9 @@ async def _init_zendesk_services(bot: Bot, dp: Dispatcher) -> None:
     )
 
     dp["zendesk_client"] = zendesk_client
+    dp["profile_service"] = profile_service
+    dp["thread_store"] = thread_store
+    dp["bot_zendesk_user_id"] = bot_zendesk_user_id
 
     # Register webhook handler with FastAPI
     from src.api.app import set_webhook_handler
@@ -145,11 +158,11 @@ async def run_bot() -> None:
 
     bot, dp = create_bot()
 
+    # --- Initialize Zendesk services (before LangGraph — graph needs them) ----
+    await _init_zendesk_services(bot, dp)
+
     # --- Initialize LangGraph state machine -----------------------------------
     await _init_langgraph(bot, dp)
-
-    # --- Initialize Zendesk services ------------------------------------------
-    await _init_zendesk_services(bot, dp)
 
     # --- Start the scheduled Zendesk article sync task -----------------------
     if settings.zendesk_sync_interval_hours > 0:
