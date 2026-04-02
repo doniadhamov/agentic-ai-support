@@ -169,4 +169,4 @@ def sidebar_branding() -> None:
 
     with st.sidebar:
         st.markdown("---")
-        st.markdown("**DataTruck Admin** v2.0\n\nAI-powered support bot management console.")
+        st.markdown("**DataTruck Admin** v1.0\n\nAI-powered support bot management console.")
