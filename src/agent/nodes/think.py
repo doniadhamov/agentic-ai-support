@@ -71,7 +71,7 @@ _TOOL_SCHEMA: dict = {
                 "description": "Description of photo/document content (null if no files or voice)",
             },
         },
-        "required": ["action", "urgency", "ticket_action", "language", "reasoning"],
+        "required": ["action", "urgency", "ticket_action", "language", "reasoning", "file_description"],
     },
 }
 

@@ -32,8 +32,10 @@ Merge with conversation context when the user is continuing a thread.
 
 5. LANGUAGE — detect: "en", "ru", or "uz"
 
-6. FILE_DESCRIPTION — if the current message has photos or documents, describe what you see \
-in 1-2 sentences. Set to null if no files or if the file is a voice message.
+6. FILE_DESCRIPTION — if the current message contains a photo or document, you MUST describe \
+what you see in 1-2 sentences. ALWAYS do this even if the message has a caption — the caption \
+doesn't describe the image content (e.g. caption "How to fix this?" tells us nothing about the \
+screenshot). Set file_description to null ONLY for text-only messages and voice messages.
 
 ## CRITICAL RULES
 

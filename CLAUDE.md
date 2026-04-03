@@ -617,7 +617,9 @@ Logic:
      - Bot response: "Bot: To change load status, go to Settings..."
 
    Note: voice messages already have text (transcription from preprocessor).
-   file_description is only needed for photos and documents where text="" (no caption).
+   file_description is generated for ALL photos and documents — even those with captions.
+   A caption like "How to fix this?" doesn't describe the image content. The file_description
+   ("Screenshot of Loads page with Error 500") is what makes photos meaningful in future context.
    The file_description field makes non-text messages meaningful in conversation context.
 
 2. Load active_tickets from DB: get_active_threads_in_group(group_id=group_id)
@@ -671,11 +673,21 @@ Tool schema:
   "file_description": string | null
 }
 
-file_description: if the current message has photos or documents, think describes what it sees
-in 1-2 sentences. Example: "Screenshot of Loads page showing HTTP 500 error with
-red banner." This is stored in DB by remember node and becomes part of
+file_description: if the current message has photos or documents, think ALWAYS describes
+what it sees in 1-2 sentences — even if the message has a caption. The caption ("How to fix
+this?") doesn't describe the image content. The description ("Screenshot of Loads page showing
+HTTP 500 error") does. This is stored in DB by remember node and becomes part of
 conversation_history for future messages.
-Set to null if: no files, or file_type="voice" (voice already has text from transcription).
+
+When to generate file_description:
+  - Photo (no caption): YES — "Screenshot of Loads page showing Error 500"
+  - Photo + caption "How to fix this?": YES — caption doesn't describe the image
+  - Photo sent as file (image/* document): YES — same as regular photo
+  - PDF/DOC document: YES — "PDF invoice showing March delivery totals"
+  - Voice message: NO — transcription is already in text field
+  - Text-only message: NO — nothing to describe
+
+Set to null ONLY if: no files, text-only message, or file_type="voice".
 
 extracted_question: when images have descriptions from conversation_history,
 think merges them into the question. Example: user sent 3 error screenshots
@@ -805,10 +817,11 @@ Logic:
 
 4. Update user's message row in DB:
    - Set zendesk_ticket_id, zendesk_comment_id, link_type
-   - Set file_description from think (only if file_type is "photo" or "document" — 
-     voice messages don't need it, their text field already has the transcription)
+   - Set file_description from think (ALWAYS for file_type "photo" or "document" —
+     even when caption exists. Caption "How to fix this?" doesn't describe the image.
+     Voice messages don't need it — their text field already has the transcription.)
    This is critical: the file_description becomes part of conversation_history
-   for future messages. Without it, photos/documents show as empty text in context.
+   for future messages. Without it, photos/documents lose their meaning in context.
 
 5. SAVE BOT MESSAGE TO DB (only if bot responded in Telegram):
    If bot_response_message_id is not None:
@@ -1024,7 +1037,11 @@ async def handle_group_message(message: Message, graph, bot: Bot):
         file_type = "voice"
     elif message.document:
         file_id = message.document.file_id
-        file_type = "document"
+        # Photo sent as file has image/* mime type — treat as photo for context
+        if message.document.mime_type and message.document.mime_type.startswith("image/"):
+            file_type = "photo"
+        else:
+            file_type = "document"
 
     await save_message(
         chat_id=message.chat.id,

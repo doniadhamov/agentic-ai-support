@@ -266,9 +266,11 @@ Every message type (text, photo, voice, document) flows through the same graph, 
 
 **Text messages**: `text` = user's typed text. Straightforward — think sees the text, decides action.
 
-**Photos/documents (with caption)**: `text` = caption, `file_id` = Telegram reference to the file. Think sees the caption + actual image via Vision. Think also produces a `file_description` (e.g., "Screenshot of Loads page with Error 500") which is saved to DB.
+**Photos/documents (with caption)**: `text` = caption, `file_id` = Telegram reference to the file. Think sees the caption + actual image via Vision. Think ALWAYS produces a `file_description` (e.g., "Screenshot of Loads page with Error 500") even when caption exists — because the caption "How to fix this?" doesn't describe what's in the image.
 
 **Photos/documents (without caption)**: `text` = "" (empty), `file_id` = Telegram reference. Think analyzes the image via Vision and produces `file_description`. Without this description, future conversation history would show the message as blank.
+
+**Photo sent as file** (user sends image as document): treated the same as a regular photo. `file_type` = "photo" (detected by image/* mime type). `file_description` always generated.
 
 **Voice messages**: Preprocessor transcribes via Gemini Flash → `text` = transcription. No `file_description` needed because the meaning is already in the text.
 
