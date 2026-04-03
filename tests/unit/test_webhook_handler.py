@@ -134,7 +134,7 @@ async def test_comment_delivered_to_telegram(
     handler._bot.send_message.assert_awaited_once()
     call_kwargs = handler._bot.send_message.call_args
     assert call_kwargs.kwargs["chat_id"] == -1001234567890
-    assert "🎫 Ticket #7741" in call_kwargs.kwargs["text"]
+    assert "(#7741)" in call_kwargs.kwargs["text"]
     assert "Agent reply" in call_kwargs.kwargs["text"]
 
     # Verify message was persisted
