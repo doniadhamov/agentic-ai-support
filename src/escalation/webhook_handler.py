@@ -10,6 +10,7 @@ from loguru import logger
 from src.agent.nodes.learn import learn_from_ticket
 from src.agent.ticket_summarizer import TicketSummarizer
 from src.database.repositories import (
+    get_latest_user_message_id,
     get_root_message_id,
     save_message,
     update_thread_status,
@@ -147,8 +148,10 @@ class ZendeskWebhookHandler:
 
         group_id = thread.group_id
 
-        # Find the original user message to reply to
-        reply_to = await get_root_message_id(ticket_id_int, group_id)
+        # Reply to the latest user message in this ticket (not the first one)
+        reply_to = await get_latest_user_message_id(ticket_id_int, group_id)
+        if reply_to is None:
+            reply_to = await get_root_message_id(ticket_id_int, group_id)
 
         # Format and send to Telegram (plain text to avoid MarkdownV2 escaping issues)
         telegram_text = f"🎫 Ticket #{ticket_id}\n💬 Agent: {author_name}:\n\n{body}"

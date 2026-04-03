@@ -401,6 +401,28 @@ async def get_root_message_id(zendesk_ticket_id: int, chat_id: int) -> int | Non
         return result.scalar_one_or_none()
 
 
+async def get_latest_user_message_id(zendesk_ticket_id: int, chat_id: int) -> int | None:
+    """Return the Telegram message_id of the most recent user message for a ticket.
+
+    This is used by the webhook handler to reply to the latest message in the
+    conversation, not the first one that opened the ticket.
+    """
+    factory = get_session_factory()
+    async with factory() as session:
+        stmt = (
+            select(Message.message_id)
+            .where(
+                Message.zendesk_ticket_id == zendesk_ticket_id,
+                Message.chat_id == chat_id,
+                Message.source == "telegram",
+            )
+            .order_by(Message.created_at.desc())
+            .limit(1)
+        )
+        result = await session.execute(stmt)
+        return result.scalar_one_or_none()
+
+
 async def get_messages_by_ticket_id(zendesk_ticket_id: int) -> list[dict]:
     """Return all messages linked to a Zendesk ticket, ordered oldest-first."""
     factory = get_session_factory()
