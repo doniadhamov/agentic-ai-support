@@ -32,12 +32,17 @@ async def respond_node(state: SupportState, bot: Bot) -> dict:
         logger.warning("respond: no text to send — this node should not have been reached")
         return {"bot_response_text": None, "bot_response_message_id": None}
 
-    # Append source link if available
+    # Append source links for all articles used
     sources = state.get("knowledge_sources", [])
-    for src in sources:
-        if src.get("url") and src.get("type") == "documentation":
-            text += f"\n\nFor more information: {src['url']}"
-            break
+    source_urls = [
+        src["url"] for src in sources
+        if src.get("url") and src.get("type") == "documentation"
+    ]
+    if len(source_urls) == 1:
+        text += f"\n\nFor more information: {source_urls[0]}"
+    elif source_urls:
+        links = "\n".join(source_urls)
+        text += f"\n\nFor more information:\n{links}"
 
     # Strip screenshot markers
     text = _SCREENSHOT_RE.sub("\n", text)

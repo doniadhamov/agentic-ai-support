@@ -270,8 +270,14 @@ def _build_text(output: AgentOutput) -> str:
 
 
 def _format_sources(output: AgentOutput) -> str:
-    """Return a 'For more information' line with article URL, or empty string."""
-    for source in output.knowledge_sources_used:
-        if source.url and source.type == "documentation":
-            return f"For more information: {source.url}"
+    """Return 'For more information' lines with article URLs, or empty string."""
+    urls = [
+        source.url for source in output.knowledge_sources_used
+        if source.url and source.type == "documentation"
+    ]
+    if len(urls) == 1:
+        return f"For more information: {urls[0]}"
+    if urls:
+        links = "\n".join(urls)
+        return f"For more information:\n{links}"
     return ""
