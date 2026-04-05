@@ -5,7 +5,11 @@ from __future__ import annotations
 from loguru import logger
 
 from src.config.settings import get_settings
-from src.database.repositories import get_zendesk_user_by_telegram_id, save_zendesk_user
+from src.database.repositories import (
+    get_zendesk_user_by_telegram_id,
+    save_zendesk_user,
+    update_zendesk_user_name,
+)
 from src.escalation.ticket_client import ZendeskTicketClient
 
 
@@ -17,6 +21,8 @@ class ZendeskProfileService:
 
     def __init__(self, zendesk_client: ZendeskTicketClient) -> None:
         self._zendesk = zendesk_client
+        # In-memory cache: telegram_user_id → (zendesk_user_id, name, external_id)
+        self._cache: dict[int, tuple[int, str, str]] = {}
 
     @staticmethod
     def resolve_display_name(
@@ -49,28 +55,59 @@ class ZendeskProfileService:
         4. Cache locally
         5. Return zendesk_user_id
         """
-        # 1. Check local cache
+        # 1. Check in-memory cache (no DB or API call)
+        if telegram_user_id in self._cache:
+            zendesk_id, cached_name, external_id = self._cache[telegram_user_id]
+            if cached_name != display_name:
+                await self._zendesk.create_or_update_profile(
+                    name=display_name,
+                    identifier_value=external_id,
+                )
+                await update_zendesk_user_name(zendesk_id, display_name)
+                self._cache[telegram_user_id] = (zendesk_id, display_name, external_id)
+                logger.info(
+                    "ProfileService: updated name tg_user={} '{}' → '{}'",
+                    telegram_user_id,
+                    cached_name,
+                    display_name,
+                )
+            return zendesk_id
+
+        # 2. Check DB cache (first message from this user since bot started)
         cached = await get_zendesk_user_by_telegram_id(telegram_user_id)
         if cached:
-            logger.debug(
-                "ProfileService: cache hit tg_user={} → zd_user={}",
-                telegram_user_id,
+            # Sync name if user changed their Telegram display name
+            if cached.name != display_name:
+                await self._zendesk.create_or_update_profile(
+                    name=display_name,
+                    identifier_value=cached.external_id,
+                )
+                await update_zendesk_user_name(cached.zendesk_user_id, display_name)
+                logger.info(
+                    "ProfileService: updated name tg_user={} '{}' → '{}'",
+                    telegram_user_id,
+                    cached.name,
+                    display_name,
+                )
+            self._cache[telegram_user_id] = (
                 cached.zendesk_user_id,
+                display_name,
+                cached.external_id,
             )
             return cached.zendesk_user_id
 
-        # 2. Build external_id and call Zendesk
+        # 3. Build external_id and call Zendesk Profiles API
         external_id = f"telegram_{telegram_user_id}"
         profile = await self._zendesk.create_or_update_profile(
             name=display_name,
             identifier_value=external_id,
         )
 
-        # 3. Extract IDs from response
+        # 4. Extract IDs from response
         zendesk_user_id = int(profile["user_id"])
         zendesk_profile_id = profile.get("id")
 
-        # 4. Cache in DB
+        # 5. Cache in DB
         await save_zendesk_user(
             zendesk_user_id=zendesk_user_id,
             external_id=external_id,
@@ -79,6 +116,8 @@ class ZendeskProfileService:
             name=display_name,
             role="end-user",
         )
+
+        self._cache[telegram_user_id] = (zendesk_user_id, display_name, external_id)
 
         logger.info(
             "ProfileService: created mapping tg_user={} → zd_user={} profile={}",
